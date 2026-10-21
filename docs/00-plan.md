@@ -1,0 +1,102 @@
+# 00 計畫與進度追蹤
+
+> 本文件由 AI 制定並維護。
+> - 只列**未完成**項目；項目完成後立即從本文件刪除。
+> - 里程碑內項目全部完成時，刪除整個里程碑區塊。
+> - 規格變動時同步更新 01–06、08–10；玩家可見行為變動時同步更新 07。
+
+最後更新：2026-10-21
+
+狀態圖例：⬜ 待辦　🔄 進行中
+
+---
+
+## 待決事項
+
+- ⬜ 持續補齊 [09](09-life-history.md) 「（估）」數值的來源，改為實測或（推）；不阻擋實作
+- ⬜ 預設遊戲速度與離線追算上限的最終數值（M6 決定）
+- ⬜ 授權條款（License）
+
+---
+
+## M0 專案骨架
+
+- ⬜ Vite + TypeScript（strict）+ Preact + `@preact/signals` 初始化
+- ⬜ Vitest、ESLint、Prettier 設定；ESLint 規則禁止 `src/engine`、`src/generation` 使用 `Math.random`、`Date`
+- ⬜ npm scripts：`dev`、`build`、`test`、`lint`、`sim`
+- ⬜ `.gitignore`
+- ⬜ `@sqlite.org/sqlite-wasm` 安裝與 Vite 設定
+- ⬜ 移除 `README.md`、`CLAUDE.md` 中「M0 完成後可用」標註
+
+## M1 核心引擎
+
+- ⬜ 可設種子亂數（sfc32 + 種子雜湊）與測試
+- ⬜ 核心型別：`TankConfig`、`Environment`、`LandState`、`ChemistryPools`、`SimulationState`、`Command`、`SimEvent`
+- ⬜ 缸體幾何：長寬高、水深、陸域比例（[04](04-simulation-model.md) §3.1）
+- ⬜ 水域環境過程：溫度、光週期、氣體交換、O₂ 飽和度、pH/KH/CO₂、游離氨比例
+- ⬜ 陸域環境過程：空氣溫度、濕度、土壤濕度、落葉分解、逕流（[04](04-simulation-model.md) §4.1）
+- ⬜ 微生物化學過程：AOB、NOB、異營菌、脫氮菌
+- ⬜ `step(state, commands)` 固定步長迴圈、子步長穩定化、事件輸出
+- ⬜ 測試：氮守恆（含水陸逕流）、開缸循環於 4–8 遊戲週內完成、純水族缸與純陸缸皆可運行
+
+## M2 物種生成
+
+- ⬜ `Archetype` 型別與 [02](02-ecosystem-catalog.md) 全部 111 個功能群資料，含 [09](09-life-history.md) 生活史、密度、最小飼養空間
+- ⬜ 基因座定義與表現型推導，含 `humidity` 濕度帶與突變等位基因效果（[05](05-species-generation.md) §2）
+- ⬜ 基因型編碼（混合進位 ↔ base-36）與物種登錄表
+- ⬜ 基因型抽樣：基準權重、環境加權、飼養空間體型限制（[05](05-species-generation.md) §3、[09](09-life-history.md) §7）
+- ⬜ 命名器：學名雙射編碼、變種名、中文俗名（[05](05-species-generation.md) §4）
+- ⬜ 稀有度計算（[05](05-species-generation.md) §6）
+- ⬜ Gompertz 參數求解
+- ⬜ 測試：決定性、編碼 ↔ 學名互逆、物種空間計數、表現型落在範圍內
+- ⬜ 測試：每個生物參數皆有 `basis`；measured／derived 皆有 `source`；derived 皆有推算方式；每個功能群皆有年齡上限
+
+## M3 族群動態
+
+- ⬜ biomass 族群成長（微生物、藻、原生動物、水草、苔蘚、陸生植物、真菌）
+- ⬜ cohort 族群：年齡世代群、攝食（Holling II）、代謝（Kleiber）、繁殖、死亡
+- ⬜ 互動表與效能保險（[04](04-simulation-model.md) §9.2）
+- ⬜ 測試：族群守恆原則——無任何程式路徑在模擬過程與玩家指令之外改變族群（[04](04-simulation-model.md) §9.1）
+- ⬜ 區域使用 `w`、區域重疊、體溫（水溫／氣溫／曬點）（[04](04-simulation-model.md) §5.4）
+- ⬜ 兩棲類變態：卵與幼體限水域、變態後換區域
+- ⬜ 衰老：`gompertz`、`negligible`、`semelparous`、`modular`、`cell_turnover`、`clonal_aging`、羽化離缸（[04](04-simulation-model.md) §5.7）
+- ⬜ 壓力死亡：毒性、缺氧、乾燥、缺陸域、缺水域、缺 UVB、逃逸（[04](04-simulation-model.md) §5.8）
+- ⬜ 容量 `K` 依 [09](09-life-history.md) 密度與最小飼養空間換算
+- ⬜ 共生：珊瑚 + 蟲黃藻、白化
+- ⬜ 湧現：初始接種、背景孢子雨、搭便車、開放系統、土壤、落葉、活餌逃逸、缸外；基因型抽樣；滅絕判定
+- ⬜ 繁殖突變與突變族群建立（[05](05-species-generation.md) §5）
+- ⬜ 攝食通量、化學通量、族群歷史紀錄（[04](04-simulation-model.md) §10）
+- ⬜ CLI 模擬器 `npm run sim`：以固定種子輸出文字紀錄，交付審閱
+
+## M4 文字 UI
+
+- ⬜ Web Worker 承載模擬迴圈、指令佇列、快照推送（[08](08-ui-design.md) §9）
+- ⬜ 響應式版面、淺色／深色主題（[08](08-ui-design.md) §1–2）
+- ⬜ 頂欄與缸況面板（水域、陸域分組）
+- ⬜ 物種列表：分組切換（營養層、類別、區域、棲位）、數量、走勢、趨勢、標記、搜尋、排序、關係標示
+- ⬜ 物種詳情：標頭、族群與年齡結構、關係圖、關係清單、食物鏈路徑、基因型與特徵、麵包屑
+- ⬜ 事件日誌（物種名稱可點擊、等級篩選）
+- ⬜ 建缸精靈（含缸型、尺寸、陸域設備）
+- ⬜ 控制對話框
+- ⬜ 圖鑑頁：進度、分頁、篩選、搜尋
+- ⬜ 鍵盤操作與無障礙標記
+
+## M5 遊戲系統
+
+- ⬜ 玩家干預指令：餵食、投放活餌、換水、調光、調溫、曝氣、噴霧、陸域設備、投放、撈除、用藥、加入水草／活石／落葉
+- ⬜ 資料庫連線：OPFS `opfs-sahpool`、記憶體降級、多分頁鎖定偵測（[10](10-database.md) §1）
+- ⬜ 遷移機制與初始結構 `0001_init.sql`（[10](10-database.md) §2、§5）
+- ⬜ 參考資料：`tools/build-reference-sql.ts`、版本比對與匯入
+- ⬜ 寫入器：每日彙總、事件、圖鑑、狀態（[10](10-database.md) §3）
+- ⬜ 具名查詢與 worker `query` 協定（[10](10-database.md) §4）
+- ⬜ 匯出／匯入、保留政策設定
+- ⬜ 資料庫測試（記憶體資料庫）
+- ⬜ 離線追算與離開期間摘要
+- ⬜ 生態分數
+
+## M6 平衡與驗收
+
+- ⬜ 批次模擬工具：多種子 × 各缸型預設（水族缸、水陸缸、雨林缸、純陸缸）× 各尺寸 × 365 遊戲日
+- ⬜ 調校參數，達成 [06](06-gameplay.md) §6 驗收指標（含密度、壽命、圖鑑新增數、陸域存活）
+- ⬜ 效能檢查：1,000 個族群下每 tick < 5 ms
+- ⬜ 依最終實作與平衡數值校對 `docs/07-user-guide.md`
