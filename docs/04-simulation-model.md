@@ -10,7 +10,7 @@
 ## 2. 每 tick 處理順序
 
 1. 套用玩家指令
-2. 環境：溫度、光照、氣體交換、pH；陸域濕度、土壤濕度、逕流
+2. 環境：季節時鐘與每日氣候（[11](11-geography-climate.md) §4）；溫度、光照、氣體交換、pH；戶外降雨、蒸發、結冰；陸域濕度、土壤濕度、逕流
 3. 微生物化學過程
 4. 初級生產
 5. 共生
@@ -67,6 +67,18 @@
 | `lid` | bool | 加蓋 |
 | `mistingPerDay` | 次 | 噴霧頻率 |
 
+### 3.1.2 地點與季節狀態
+
+| 欄位 | 單位 | 說明 |
+|---|---|---|
+| `location` | — | 地點分類與棲地（[11](11-geography-climate.md) §1），建缸後固定 |
+| `placement` | indoor／outdoor | 室內／戶外 |
+| `dayOfYear` | 1–365 | 遊戲日期（[11](11-geography-climate.md) §4） |
+| `ambientTemperature` | °C | 環境溫度 |
+| `pressureAtm` | atm | 代表海拔氣壓 |
+| `iceCover` | bool | 戶外冰封 |
+| `shading` | 0–0.9 | 戶外遮蔭 |
+
 ### 3.2 化學池（mg/L）
 
 | 池 | 說明 |
@@ -85,15 +97,14 @@
 
 ## 4. 環境過程
 
-**溫度**：有加熱器時 `T += (T_set − T) × 0.2`；無加熱器時 `T += (T_room − T) × 0.05`，`T_room = 22`。
+**溫度**：有加熱器時 `T += (T_set − T) × 0.2`；無加熱器時 `T += (T_ambient − T) × 0.05`。`T_ambient`：室內 = 室溫設定（預設 22 °C）；戶外依 [11](11-geography-climate.md) §7。
 
-**光照**：`I(t) = lightIntensity`，於光週期內；其餘時間為 0。
+**光照**：室內 `I(t) = lightIntensity`，於光週期內，其餘為 0；啟用季節光照時光週期 = [11](11-geography-climate.md) §3.2 日照長度。戶外為自然光（[11](11-geography-climate.md) §3、§4）× (1 − 遮蔭)。
 
-**O₂ 飽和度**
-`O2sat(T, S) = (14.6 − 0.41T + 0.008T² − 0.000078T³) × (1 − 0.0057S)`
+**O₂ 飽和度**：Benson & Krause 公式，含鹽度與氣壓修正（[11](11-geography-climate.md) §3.1）；氣壓由代表海拔計算。
 
 **氣體交換**
-`kLa = 0.02 + 0.20 × aeration + 0.10 × flow`（每 tick）
+`kLa = (0.02 + 0.20 × aeration + 0.10 × flow) × (iceCover ? 0.05 : 1)`（每 tick）
 `ΔO2 = kLa × (O2sat − O2)`；`ΔCO2 = kLa × (0.5 − CO2)`
 
 **pH**：`pH = 7 + log10(3 × KH / CO2)`，限制於 5.5–9.0。
@@ -197,6 +208,7 @@
 - 生活階段：幼體（`age < maturityDays` 或 `meanMass < 0.5 × adultMass`）、成體、老年（`age > lifespanTyp`）。
 - 成體將剩餘能量累積於 `reproReserve`；`reproReserve ≥ clutchSize × eggMass` 時產出新世代群：`count = clutchSize × 幼體存活 × recruitment × (1 − N/K)`。
 - `recruitment`：normal 1、rare 0.05、none 0（[09](09-life-history.md) §2）。
+- 繁殖不設固定季節：成體僅在 `f_env ≥ 0.5` 且能量收支為正時累積 `reproReserve`；繁殖季由季節溫度與食物量變化自然產生。
 - `modular` 群體（珊瑚、海綿、群體海鞘）：個體 = 群體；`meanMass` = 群體質量。
 
 ### 5.7 年齡與衰老

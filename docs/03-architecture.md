@@ -118,6 +118,20 @@ step(state: SimulationState, commands: Command[]): { state: SimulationState; eve
 - UI 偏好另以 localStorage `ecosim.ui` 快取，供 worker 啟動前渲染使用。
 - 讀寫失敗時不中斷遊戲，UI 顯示存檔警示。
 
+## 5.1 工具鏈
+
+| 項目 | 規格 |
+|---|---|
+| Node | ≥ 22.12；`.nvmrc` = 24 |
+| 型別專案 | `tsconfig.core.json`：`src/content`、`src/generation`、`src/engine`、`src/game`，lib 僅 ES2023 |
+| | `tsconfig.app.json`：`src/ui`、`src/main.tsx`，lib DOM，JSX（Preact） |
+| | `tsconfig.worker.json`：`src/worker`、`src/persistence`，lib WebWorker |
+| | `tsconfig.node.json`：`tools`、`tests`、設定檔，Node 型別 |
+| 分層強制 | `eslint.config.js`：`@typescript-eslint/no-restricted-imports` 依 §1 相依方向禁止反向 import（`import type` 例外）；Preact 僅限 `ui`；SQLite 僅限 `worker`、`persistence` |
+| 純度強制 | `src/content`、`src/generation`、`src/engine` 禁用 `Math.random`、`Date`、`performance`、`crypto`、計時器、`window`、`document`、`self`、`globalThis` 等 |
+| 規則測試 | `tests/lint/layer-rules.test.ts` |
+| CI | `.github/workflows/ci.yml`；僅 `main` 分支 push；`format:check` → `lint` → `test` → `build` |
+
 ## 6. 程式規範
 
 - TypeScript `strict`，禁止 `any`。
@@ -131,6 +145,7 @@ step(state: SimulationState, commands: Command[]): { state: SimulationState; eve
 |---|---|
 | 單元測試 | 各過程函式（環境、硝化、攝食、代謝、衰老、抽樣、命名） |
 | 基因型測試 | 編碼 ↔ 基因型 ↔ 學名互逆；物種空間計數與 [05](05-species-generation.md) §2.4 一致；Gompertz 參數滿足 `S(typ) = 0.5`、`S(max) = 0.01` |
+| 規則測試 | ESLint 分層與純度規則：違規必報錯、合法 import 不報錯 |
 | 資料庫測試 | 記憶體資料庫：遷移由 0 套用至最新、參考資料匯入筆數、寫入後具名查詢結果、`lineage` 遞迴正確 |
 | 不變量測試 | 氮、磷守恆（扣除換水、脫氮、餵食輸入）；所有池 ≥ 0 |
 | 決定性測試 | 同種子同指令序列，狀態雜湊一致 |

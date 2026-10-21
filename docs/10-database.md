@@ -29,6 +29,10 @@
 | `ref_vector` | `(archetype_id, vector)` | `lambda` |
 | `ref_locus` | `(archetype_id, locus)` | `position`、`allele_count`、`ordered` |
 | `ref_allele` | `(archetype_id, locus, allele_index)` | `label_zh`、`base_weight`、`params_json` |
+| `ref_climate` | `(latitude_zone, moisture, continentality)` | `koppen`、`station`、`station_elevation_m`、`t_ann`、`t_warm`、`t_cold`、`warm_month`、`dtr`、`rh_wet`、`rh_dry`、`precip_annual`、`wet_months_json`、`frost_days`、`selectable`、`basis` |
+| `ref_habitat` | `id` | `name_zh`、`recommend_json`（[11](11-geography-climate.md) §5.1）、`allowed_json`（§5.2）、`features_json`（潮汐、季節乾涸） |
+| `ref_realm` | `code` | `name_zh`、`ocean_regions_json` |
+| `ref_archetype_realm` | `(archetype_id, realm_or_ocean)` | `basis`、`source_id` |
 | `ref_naming` | `(archetype_id, part, idx)` | `text`（字根、字尾、通稱） |
 | `ref_source` | `id` | `title`、`url`、`accessed_at` |
 | `ref_param_source` | `(archetype_id, param)` | `basis`（measured／derived／estimated）、`source_id`（estimated 時可空）、`derivation`（推算方式，`derived` 時必填） |
@@ -50,7 +54,7 @@
 | `tank_state` | `tank_id` | `tick`、`state_json`（完整 `SimulationState`） |
 | `tank_population` | `(tank_id, population_id)` | `species_id`、`kind`、`established_tick`、`extinct_tick` |
 | `tank_population_daily` | `(tank_id, day, species_id)` | `count`、`biomass`、`juveniles`、`adults`、`senescent`、`trophic_level` |
-| `tank_chemistry_daily` | `(tank_id, day)` | `temperature`、`ph`、`o2`、`tan`、`no2`、`no3`、`po4`、`sio2`、`ca`、`detritus`、`air_temperature`、`humidity`、`soil_moisture`、`litter`、`soil_tan`、`soil_po4` |
+| `tank_chemistry_daily` | `(tank_id, day)` | `temperature`、`ph`、`o2`、`tan`、`no2`、`no3`、`po4`、`sio2`、`ca`、`detritus`、`air_temperature`、`humidity`、`soil_moisture`、`litter`、`soil_tan`、`soil_po4`、`ambient_temperature`、`day_length_h`、`precipitation_mm`、`evaporation_mm`、`water_volume_l`、`ice_cover` |
 
 ### 2.4 紀錄（`log_`）
 

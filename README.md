@@ -7,6 +7,7 @@
 ## 特色
 
 - **完全隨機的生態系**：111 個真實功能群（細菌、藻類、苔蘚、原生動物、甲殼類、蠕蟲、螺貝、珊瑚、昆蟲、蛙、蠑螈、蜥蜴、蛇、龜、小魚到 2 m 的大魚……）× 離散基因型，理論物種數超過四千億種，每個都有唯一學名；族群繁殖時會隨機產生突變種（白化、巨大化、發光……）。
+- **地點與季節**：依緯度帶、海拔帶、乾濕型、棲地類型、生物地理區推薦缸體設定；季節依真實日照變化；可放室內或戶外（戶外會結冰、下雨、蒸發）。
 - **水陸缸**：陸域比例 0–100%，從水族缸、水陸缸、雨林缸到純陸缸；缸體最大 100,000 L，體型依各類群飼養空間限制。
 - **生老病死**：每個物種都有依真實資料設定的壽命與族群密度，所有生物都會老死。
 - **從底層到頂端**：氮循環、光合作用、攝食、代謝、繁殖、死亡、分解，構成完整的營養層級。
@@ -22,16 +23,21 @@ TypeScript（strict）· Vite · Vitest · Preact + Signals · Web Worker · SQL
 
 ## 開發
 
-M0 專案骨架完成後可用：
+需求：Node.js ≥ 22.12（建議使用 `.nvmrc` 指定的 24）。
 
 ```bash
 npm install
-npm run dev      # 開發伺服器
-npm run build    # 正式建置
-npm run test     # 單元測試
-npm run lint     # 靜態檢查
-npm run sim -- --seed 42 --days 90 --preset freshwater   # CLI 模擬器，輸出文字紀錄
+npm run dev           # 開發伺服器
+npm run build         # 型別檢查 + 正式建置
+npm run typecheck     # 型別檢查
+npm test              # 單元測試
+npm run lint          # 靜態檢查
+npm run format        # 格式化
 ```
+
+M3 起提供 CLI 模擬器：`npm run sim -- --seed 42 --days 90 --preset freshwater`。
+
+CI（GitHub Actions）只在 `main` 分支 push 時執行：格式檢查、lint、測試、建置。
 
 ## 文件
 
@@ -48,6 +54,7 @@ npm run sim -- --seed 42 --days 90 --preset freshwater   # CLI 模擬器，輸�
 | [08 UI 設計](docs/08-ui-design.md) | 開發者 | 版面、物種列表、上下游關係呈現 |
 | [09 生活史與族群密度](docs/09-life-history.md) | 開發者 | 壽命、繁殖、衰老、族群密度與來源 |
 | [10 資料庫](docs/10-database.md) | 開發者 | SQLite 資料表、查詢、遷移 |
+| [11 地理、氣候與季節](docs/11-geography-climate.md) | 開發者 | 地點分類、氣候、季節、棲地推薦、生物地理區 |
 | [CLAUDE.md](CLAUDE.md) | AI 助手 | 開發守則 |
 
 ## 授權

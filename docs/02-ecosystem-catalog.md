@@ -27,6 +27,8 @@
 | `feeder_escape` | 活餌昆蟲逃逸後建立族群 |
 | `outside` | 未加蓋時從缸外進入：螞蟻、蜘蛛、蕈蚋 |
 | `player_release` | 玩家投放；從功能群隨機抽出新物種，或從圖鑑重新投放 |
+
+自然來源途徑只產生原生於所選生物地理區的功能群；`player_release`、`feeder_escape` 不受限（[11](11-geography-climate.md) §6）。
 | `mutation` | 缸內族群繁殖時突變（[05](05-species-generation.md) §5） |
 
 ## 2. 營養層總覽

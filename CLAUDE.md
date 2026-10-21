@@ -17,13 +17,14 @@
 | [docs/08-ui-design.md](docs/08-ui-design.md) | 修改 `src/ui`、worker 快照格式 |
 | [docs/09-life-history.md](docs/09-life-history.md) | 壽命、繁殖、衰老、族群密度、容量 `K` |
 | [docs/10-database.md](docs/10-database.md) | 修改 `src/persistence`、資料表、查詢、遷移 |
+| [docs/11-geography-climate.md](docs/11-geography-climate.md) | 地點、氣候、季節、室內／戶外、生物地理區 |
 
 ## 工作流程
 
 1. 從 `docs/00-plan.md` 取下一個 ⬜ 項目，改為 🔄。
 2. 讀對應規格文件，依規格實作。
 3. 測試、lint 通過後，**從 00 刪除該項目**；里程碑全空則刪除整個區塊；更新「最後更新」日期。
-4. 規格變更時，同一次變更內同步更新 01–06、08–10。
+4. 規格變更時，同一次變更內同步更新 01–06、08–11。
 5. 玩家可見行為變更時，同步更新 `docs/07-user-guide.md`。
 6. 發現新工作或待決事項時加入 00。
 
@@ -63,15 +64,25 @@
 
 ## 指令
 
-M0 完成後可用：
-
 | 指令 | 用途 |
 |---|---|
 | `npm run dev` | 開發伺服器 |
-| `npm run build` | 建置 |
-| `npm run test` | 測試 |
+| `npm run build` | 型別檢查 + 建置 |
+| `npm run typecheck` | 型別檢查（`tsc -b`，四個專案） |
+| `npm test` | 測試 |
 | `npm run lint` | 靜態檢查 |
-| `npm run sim -- --seed <n> --days <n> --preset <freshwater\|brackish\|marine>` | CLI 模擬，輸出文字紀錄 |
+| `npm run format` / `format:check` | Prettier 格式化／檢查 |
+| `npm run sim -- --seed <n> --days <n> --preset <freshwater\|brackish\|marine>` | CLI 模擬，輸出文字紀錄（M3 起） |
+
+完成任務前必須通過：`npm run format:check`、`npm run lint`、`npm test`、`npm run build`。
+
+## 工具鏈規則
+
+- TypeScript 6.0（`typescript-eslint` 支援範圍內）；所有套件鎖定精確版本。
+- 型別專案：`tsconfig.core.json`（content／generation／engine／game，僅 ES2023，無 DOM）、`tsconfig.app.json`（ui，DOM + JSX）、`tsconfig.worker.json`（worker／persistence，WebWorker）、`tsconfig.node.json`（tools／tests／設定檔）。
+- JSX 設定只放在 `tsconfig.app.json`；Preact 型別會引入 DOM。
+- 分層相依與模擬純度由 `eslint.config.js` 強制，規則測試位於 `tests/lint/`；修改分層時同步更新兩者。
+- CI 只在 `main` 分支 push 時執行。
 
 ## 文件語言
 

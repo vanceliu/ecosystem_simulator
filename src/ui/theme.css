@@ -1,0 +1,33 @@
+:root {
+  --color-bg: #f7f7f4;
+  --color-fg: #1f2421;
+  --color-muted: #5c665f;
+  --font-body: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-bg: #121614;
+    --color-fg: #e4e9e5;
+    --color-muted: #9aa49d;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #121614;
+  --color-fg: #e4e9e5;
+  --color-muted: #9aa49d;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-body);
+}
+
+.app {
+  padding: 16px;
+}
