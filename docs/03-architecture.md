@@ -27,6 +27,16 @@ src/
   content/
     archetypes/        各營養層功能群資料
     tankOptions.ts     建缸選項
+    sources.ts         來源登錄表
+    sourced.ts         參數依據型別（measured／derived／estimated）
+    microbes.ts        微生物動力學
+    stoichiometry.ts   化學計量、飼料與落葉組成
+    waterSources.ts    水源水質與初始菌量
+    climate.ts         氣候型、蒸發
+    habitats.ts        棲地推薦與可選條件
+    realms.ts          生物地理區原生分布
+    location.ts        地點分類
+    archetypeIds.ts    功能群 ID
   generation/
     traits.ts
     naming.ts
@@ -36,9 +46,17 @@ src/
   engine/
     rng.ts
     types.ts
-    environment.ts
-    chemistry.ts
-    microbes.ts
+    geometry.ts        缸體幾何、微生物容量
+    atmosphere.ts      氣壓、溶氧、游離氨、碳酸平衡 pH
+    astronomy.ts       日照長度、太陽輻照度、PPFD
+    climate.ts         季節時鐘、每日氣候、降雨抽樣
+    environment.ts     水溫、氣體交換、燈光
+    hydrology.ts       降雨、蒸發、溢流、潮汐、季節乾涸
+    sourceWater.ts     注水組成（水源、RO 稀釋、人工海鹽）
+    land.ts            陸域氣候、逕流
+    fluxes.ts          通量限制器
+    microbes.ts        溶出、水解、硝化、脫氮、土壤分解
+    state.ts           初始狀態、質量總計
     producers.ts
     consumers.ts
     symbiosis.ts
@@ -47,6 +65,7 @@ src/
     step.ts
     events.ts
   game/
+    setup.ts           地點驗證、推薦建缸設定
     commands.ts
     codex.ts
     scoring.ts

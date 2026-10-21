@@ -79,7 +79,9 @@
 | `iceCover` | bool | 戶外冰封 |
 | `shading` | 0–0.9 | 戶外遮蔭 |
 
-### 3.2 化學池（mg/L）
+### 3.2 化學池
+
+所有池以缸內總質量（mg）儲存；濃度 = 質量 ÷ `waterVolumeL`。有機物以 COD 計，並分別追蹤其氮、磷質量（`{cod, n, p}`）。
 
 | 池 | 說明 |
 |---|---|
@@ -91,9 +93,34 @@
 | `o2` | 溶氧 |
 | `co2` | 二氧化碳 |
 | `ca` | 鈣 |
-| `doc` | 溶解有機碳 |
-| `detritus` | 碎屑（乾重） |
-| `food` | 未食用飼料（乾重） |
+| `saltMg` | 鹽；鹽度 = `saltMg / 1000 / waterVolumeL` |
+| `alkalinityMg` | 鹼度（以 CaCO₃ 計）；KH = `alkalinityMg / 17.86 / waterVolumeL` |
+| `substrateCod` | 易分解溶解有機物（COD） |
+| `food` | 未食用飼料 `{cod, n, p}` |
+| `detritus` | 可水解碎屑 `{cod, n, p}` |
+| `inert` | 惰性碎屑 `{cod, n, p}` |
+| 陸域 `litter` | 落葉 `{cod, n, p}` |
+| 陸域 `soilSubstrateCod`、`soilTan`、`soilPo4` | 土壤溶解有機物、銨、磷 |
+
+微生物生物量以 COD 計；含氮 0.08、含磷 0.0155 g/g COD。
+
+### 3.3 注水與材料
+
+**注水組成**（每公升；`src/engine/sourceWater.ts`）
+- 水源水質、溶解有機碳（DOC）與初始菌量見 `src/content/waterSources.ts`。
+- 天然鹹水依目標鹽度以 RO 水稀釋：`sourceFraction = min(1, 目標鹽度 / 水源鹽度)`；水質與菌量 × `sourceFraction`。
+- 不足的鹽度以人工海鹽補足：每 35 ppt 帶入 KH 8、Ca 420 mg/L。
+- DOC × 2.67 換算 COD；10% 進入 `substrateCod`（易分解），90% 進入 `inert`（腐植質，不含氮磷）。
+- 初次注水、潮汐進水、季節補水皆使用同一組成；計入外部輸入。
+
+**野外材料**（初始一次性帶入）
+- 野外石頭、礁石、沉木：浸水表面 × 10⁷ cells/cm²；其中 AOB、NOB 各 5%，其餘為異營菌。另帶入 7,100 mg COD/m² 有機碎屑（含氮 0.08、磷 0.0155 g/g COD）。
+- 野外砂泥：底材表面同上，脫氮菌另佔 2%；有機碎屑只計表層 1 cm。
+- 野外土壤、落葉：土壤細菌 3 × 10⁸ cells/g × 容重 0.8 g/cm³ × 深度；真菌生物量 = 細菌 × 0.5；落葉量依緯度帶林地實測（`WILD_LITTER_STOCK`）。
+- 乾淨材料：無生物膜、無有機碎屑；乾淨陸域底材帶入土壤容量 1% 的微生物。
+- 初始菌量不超過各棲位容量的 50%。
+
+**大氣氮沉降**：戶外雨水含 NH₄⁺-N 0.25、NO₃⁻-N 0.25 mg/L；落入水域加入 `tan`、`no3`，落在陸域加入 `soilTan`。
 
 ## 4. 環境過程
 
@@ -107,7 +134,7 @@
 `kLa = (0.02 + 0.20 × aeration + 0.10 × flow) × (iceCover ? 0.05 : 1)`（每 tick）
 `ΔO2 = kLa × (O2sat − O2)`；`ΔCO2 = kLa × (0.5 − CO2)`
 
-**pH**：`pH = 7 + log10(3 × KH / CO2)`，限制於 5.5–9.0。
+**pH**：碳酸平衡 `pH = 6.35 + log10([HCO₃⁻] / [CO₂])`，`[HCO₃⁻] = 0.357 × KH` mmol/L，`[CO₂] = CO2 mg/L ÷ 44.01`；限制於 3.5–9.5。空氣平衡 CO₂ = 0.5 mg/L。
 
 **游離氨比例**
 `pKa = 0.09018 + 2729.92 / (T + 273.15)`
@@ -123,7 +150,8 @@
 | 空氣溫度 | 與水溫規則相同，作用於 `airTemperature`；加熱燈只影響曬點 |
 | 濕度 | `H* = clamp(40 + 45 × (1 − landFraction) + 5 × mistingPerDay + (lid ? 15 : 0), 30, 100)`；`humidity += (H* − humidity) × 0.1`；噴霧當下 +10 |
 | 土壤濕度 | `S* = 0.3 + 0.4 × humidity / 100 + (landFraction < 1 ? 0.1 : 0)`；`soilMoisture += (S* − soilMoisture) × 0.02`；噴霧當下 +0.05 |
-| 落葉分解 | `soil_bacteria`、`saprotrophic_fungus`：`litter → soilOrganic → soilTan + soilPo4 + CO₂`，速率形式同 §5.2 異營分解，× `soilMoisture` |
+| 落葉分解 | `litter → soilSubstrateCod + soilTan + soilPo4`；速率 = `k_litter / 365 × θ^(T−20) × min(1, soilMoisture / 0.6) × activity × litter`，`k_litter = 0.85 yr⁻¹`，`activity = min(1, 分解者生物量 / (0.01 × 土壤容量))` |
+| 土壤微生物 | `soil_bacteria`、`saprotrophic_fungus` 以 `soilSubstrateCod` 為基質成長（Monod 半飽和 1,000 mg COD/m²），消耗 `soilTan`、`soilPo4`；死亡後直接回到 `soilSubstrateCod`、`soilTan`、`soilPo4` |
 | 陸生植物吸收 | 吸收 `soilTan`、`soilPo4`，形式同 §5.3 |
 | 逕流 | `0 < landFraction < 1` 時，每遊戲日 `soilTan`、`soilPo4` 的 5% 與 `litter` 的 1% 移入水域 `tan`、`po4`、`detritus`（以 `waterVolumeL` 換算濃度） |
 
@@ -137,17 +165,22 @@
 
 ### 5.2 微生物
 
-| 過程 | 速率（每 tick） | 轉換 |
-|---|---|---|
-| 氨氧化（`aob`） | `V_aob × B × tan/(0.5 + tan) × o2/(1 + o2) × f_env` | tan → no2；耗 O₂ 3.43 mg/mg-N |
-| 亞硝酸氧化（`nob`） | `V_nob × B × no2/(0.5 + no2) × o2/(1 + o2) × f_env` | no2 → no3；耗 O₂ 1.14 mg/mg-N |
-| 水解 | `k_h × detritus`，`k_h = 0.01` | detritus → doc |
-| 異營分解（`heterotroph`） | `V_het × B × doc/(2 + doc) × f_env` | doc → co2 + tan（0.07）+ po4（0.01）；耗 O₂ |
-| 脫氮（`denitrifier`） | `V_den × B × no3/(2 + no3) × anoxicFraction × (1 − o2/O2sat)` | no3 → N₂（移出系統） |
-| 真菌分解（`water_mold`） | `V_fun × B × detritus/(5 + detritus)` | detritus → doc |
+以 ASM1（Henze 1987）為基礎，硝化拆為兩步。參數與來源見 `src/content/microbes.ts`。成長速率（每日）= `μmax × θ^(T−20) × f_pH × 基質 Monod × O₂ Monod × 擁擠 × B`，`θ = 1.072`。
 
-- 細菌成長：`ΔB = Y × 轉換量 − d × B`；附著族群受 `surfaceArea` 容量限制。
-- `V_aob`、`V_nob` 使接種後族群約 14 遊戲日達到能處理一般生物負荷的量。
+| 過程 | 基質限制 | 轉換（每單位生物量成長） |
+|---|---|---|
+| 飼料溶出（非生物） | — | `food` 每日 1.87 → `substrateCod` + `tan` + `po4`（依飼料 N、P 比例） |
+| 水解 | `k_h × (X_S/X_H) / (K_X + X_S/X_H) × X_H` | `food`、`detritus` → `substrateCod` + `tan` + `po4` |
+| 異營菌（`heterotroph`） | `substrateCod`、O₂ | 耗 `1/Y` 基質、`(1−Y)/Y` O₂、0.08 `tan`、0.0155 `po4`；產 CO₂ |
+| 氨氧化菌（`aob`） | `tan`、O₂ | 氧化 `1/Y` N：`tan → no2`；耗 O₂ `3.43/Y − 1`；鹼度 −7.14 mg CaCO₃/mg N |
+| 亞硝酸氧化菌（`nob`） | `no2`、O₂ | 氧化 `1/Y` N：`no2 → no3`；耗 O₂ `1.14/Y − 1`；同化氮取自 `no2` |
+| 脫氮菌（`denitrifier`） | `substrateCod`、`no3` × `anoxicFraction × (1 − O2/O2sat)` | 還原 `(1−Y)/(2.86Y)` N：`no3 → N₂`（移出）；鹼度 +3.57 mg CaCO₃/mg N |
+| 死亡（水域） | `b × θ^(T−20) × B` | 92% → `detritus`，8% → `inert`（ASM1 死亡—再生） |
+
+- **pH 因子（微生物）**：梯形；`optLow`–`optHigh` 為 1，往 `min`、`max` 線性降至 0。硝化菌 6.5／7.0／8.5／9.5，異營菌 4.0／6.0／8.5／9.5。
+- **擁擠**：`1 − 群體生物量 / 容量`。附著（`aob`、`nob`）共用 `surfaceArea × 426 mg COD/m²`；脫氮菌用底材表面 × `anoxicFraction`；異營菌用 `waterVolumeL × 5.96 mg COD/L`。
+- **背景接種**：每種微生物每日依 `BACKGROUND_SEEDING` 加入（水域 cells/L、陸域 cells/m²），計入外部輸入。
+- **初始接種**：水源 `inoculum`（cells/mL）× 0.3 pg × 1.42 COD/乾重。
 
 ### 5.3 初級生產者
 
@@ -286,7 +319,8 @@
 ## 9. 數值穩定
 
 - 所有池與生物量下限為 0。
-- 單 tick 變化 > 50% 時拆分子步長（最多 8 個）。
+- 通量限制器：同一 tick 內某池的總消耗需求超過存量時，所有消耗該池的過程依相同比例縮減；保證非負與質量守恆。
+- 單 tick 內 O₂、tan、no2、no3、po4、`substrateCod`、`food`、`detritus`、水量任一變化 > 50%（忽略 < 0.001 mg 的池）時拆分子步長（最多 8 個）。
 
 ### 9.1 族群守恆原則
 

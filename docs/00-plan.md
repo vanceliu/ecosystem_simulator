@@ -13,28 +13,12 @@
 
 ## 待決事項
 
-- ⬜ 持續補齊 [09](09-life-history.md) 「（估）」數值的來源，改為實測或（推）；不阻擋實作
+- ⬜ 持續補齊 [09](09-life-history.md) 與 `src/content` 中 estimated 數值的來源，改為實測或（推）；不阻擋實作
+- ⬜ 背景硝化菌接種量（1 × 10⁵ cells/L/日）為估計值，依 Hovanec 專利實測時程校準；有實測資料時更新
 - ⬜ 預設遊戲速度與離線追算上限的最終數值（M6 決定）
 - ⬜ 授權條款（License）
 
 ---
-
-## M1 核心引擎
-
-- ⬜ 可設種子亂數（sfc32 + 種子雜湊）與測試
-- ⬜ 核心型別：`TankConfig`、`LocationConfig`、`Environment`、`LandState`、`ChemistryPools`、`BiomassPopulation`、`SimulationState`、`Command`、`SimEvent`
-- ⬜ 參考資料：氣候型、棲地推薦與可選條件、生物地理區（[11](11-geography-climate.md) §2、§5、§6）
-- ⬜ 推薦設定：由地點 + 棲地推導 `TankConfig` 預設值；不可選組合驗證
-- ⬜ 大氣與天文：遞減率、氣壓、Benson & Krause 溶氧、日照長度、晴空輻照度與 PPFD（[11](11-geography-climate.md) §3）
-- ⬜ 季節時鐘與每日氣候：年循環、日循環、濕度、降雨、日照率、蒸發（[11](11-geography-climate.md) §4）
-- ⬜ 缸體幾何：長寬高、水深、陸域比例（[04](04-simulation-model.md) §3.1）
-- ⬜ 水域環境過程：溫度、光照（室內燈具／季節光照／戶外自然光）、氣體交換、pH/KH/CO₂、游離氨比例
-- ⬜ 戶外過程：降雨、蒸發、溢流、水位、結冰（[11](11-geography-climate.md) §7）；潮汐與季節乾涸（§5.3）
-- ⬜ 陸域環境過程：空氣溫度、濕度、土壤濕度、落葉分解、逕流（[04](04-simulation-model.md) §4.1）
-- ⬜ 微生物化學過程：AOB、NOB、異營菌、脫氮菌、土壤細菌、腐生真菌；動力學參數附來源
-- ⬜ `createInitialState`、`step(state, commands)` 固定步長迴圈、子步長穩定化、事件輸出；M1 指令：`feed`
-- ⬜ 測試：公式對照文獻驗算值、氮守恆（含逕流、降雨、溢流）、開缸循環於 4–8 遊戲週內完成、決定性
-- ⬜ 測試：純水族缸、純陸缸、半水半陸 × 室內／戶外 × 熱帶／溫帶大陸性／寒帶各跑 365 遊戲日，無 NaN、池非負；戶外寒帶出現結冰
 
 ## M2 物種生成
 
@@ -61,6 +45,7 @@
 - ⬜ 容量 `K` 依 [09](09-life-history.md) 密度與最小飼養空間換算
 - ⬜ 共生：珊瑚 + 蟲黃藻、白化
 - ⬜ 湧現：初始接種、背景孢子雨、搭便車、開放系統、土壤、落葉、活餌逃逸、缸外；生物地理區篩選（[11](11-geography-climate.md) §6）；基因型抽樣；滅絕判定
+- ⬜ 野外水與野外材料依採集地區系觸發來源途徑（`pond_water`、`natural_seawater`、`wild_rock`、`live_rock`、`live_sand`、`driftwood`、`soil`、`leaf_litter`）；外來種標記
 - ⬜ 繁殖突變與突變族群建立（[05](05-species-generation.md) §5）
 - ⬜ 攝食通量、化學通量、族群歷史紀錄（[04](04-simulation-model.md) §10）
 - ⬜ CLI 模擬器 `tools/sim-cli.ts` 與 npm script `sim`（`tsx`）：以固定種子輸出文字紀錄，交付審閱
@@ -90,6 +75,7 @@
 - ⬜ 資料庫測試（記憶體資料庫）
 - ⬜ 離線追算與離開期間摘要
 - ⬜ 生態分數
+- ⬜ 圖鑑「外來」標記與篩選
 
 ## M6 平衡與驗收
 

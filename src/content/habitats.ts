@@ -1,0 +1,461 @@
+import type { AltitudeBand, LatitudeZone, Moisture } from './location';
+import type { LandSubstrateId } from './tankOptions';
+
+export type HabitatId =
+  | 'stream'
+  | 'lake'
+  | 'pond_wetland'
+  | 'blackwater'
+  | 'rainforest_floor'
+  | 'cloud_forest'
+  | 'mangrove'
+  | 'intertidal'
+  | 'coral_reef'
+  | 'desert'
+  | 'savanna_pond'
+  | 'temperate_woodland'
+  | 'cave_spring'
+  | 'peat_bog'
+  | 'alpine_stream';
+
+export interface Range {
+  readonly min: number;
+  readonly max: number;
+}
+
+export type LightClass = 'none' | 'low' | 'medium' | 'high' | 'very_high';
+
+/** docs/06 §1 light presets, µmol·m⁻²·s⁻¹ */
+export const LIGHT_PPFD: Readonly<Record<LightClass, number>> = {
+  none: 0,
+  low: 50,
+  medium: 150,
+  high: 400,
+  very_high: 600,
+};
+
+export interface HabitatSpec {
+  readonly id: HabitatId;
+  readonly nameZh: string;
+  readonly landPercent: Range;
+  readonly waterDepthCm: Range;
+  /** null when the habitat has no water body */
+  readonly waterTempC: Range | null;
+  /** temperate/tropical split for habitats with both */
+  readonly waterTempTropicalC?: Range;
+  readonly ph: Range | null;
+  readonly khDkh: Range | null;
+  readonly salinityPpt: Range;
+  /** 0 still – 1 strong */
+  readonly flow: number;
+  readonly airTempC: Range | null;
+  readonly humidityPercent: Range | null;
+  readonly mistingPerDay: Range;
+  readonly landSubstrate: LandSubstrateId | null;
+  readonly baskingC: number | null;
+  readonly light: LightClass;
+  readonly photoperiodH: Range;
+  readonly tide: boolean;
+  readonly seasonalDrying: boolean;
+  readonly allowedZones: readonly LatitudeZone[];
+  readonly allowedAltitudes: readonly AltitudeBand[];
+  readonly allowedMoistures: readonly Moisture[];
+  /** boreal and polar zones also allow lowland (alpine stream) */
+  readonly highLatitudeLowlandAllowed?: boolean;
+  /** fields marked（估）in docs/11 §5.1 */
+  readonly estimatedFields: readonly string[];
+}
+
+const ALL_ZONES: readonly LatitudeZone[] = [
+  'tropical',
+  'subtropical',
+  'temperate',
+  'boreal',
+  'polar',
+];
+const ALL_ALTITUDES: readonly AltitudeBand[] = ['lowland', 'hill', 'montane', 'alpine'];
+const ALL_MOISTURES: readonly Moisture[] = [
+  'humid',
+  'seasonal',
+  'mediterranean',
+  'semiarid',
+  'arid',
+];
+const NONE: Range = { min: 0, max: 0 };
+
+/** docs/11 §5; source: biotopeAquarium and habitat references listed in docs/11 §8. */
+export const HABITATS: Readonly<Record<HabitatId, HabitatSpec>> = {
+  stream: {
+    id: 'stream',
+    nameZh: '溪流',
+    landPercent: { min: 0, max: 10 },
+    waterDepthCm: { min: 15, max: 40 },
+    waterTempC: { min: 20, max: 26 },
+    ph: { min: 6.5, max: 7.5 },
+    khDkh: { min: 3, max: 8 },
+    salinityPpt: NONE,
+    flow: 0.9,
+    airTempC: null,
+    humidityPercent: null,
+    mistingPerDay: NONE,
+    landSubstrate: null,
+    baskingC: null,
+    light: 'medium',
+    photoperiodH: { min: 10, max: 12 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical', 'temperate', 'boreal'],
+    allowedAltitudes: ['lowland', 'hill', 'montane'],
+    allowedMoistures: ['humid', 'seasonal'],
+    estimatedFields: ['khDkh'],
+  },
+  lake: {
+    id: 'lake',
+    nameZh: '湖泊',
+    landPercent: NONE,
+    waterDepthCm: { min: 40, max: 60 },
+    waterTempC: { min: 10, max: 22 },
+    waterTempTropicalC: { min: 23, max: 28 },
+    ph: { min: 6.5, max: 8.0 },
+    khDkh: { min: 3, max: 10 },
+    salinityPpt: NONE,
+    flow: 0.3,
+    airTempC: null,
+    humidityPercent: null,
+    mistingPerDay: NONE,
+    landSubstrate: null,
+    baskingC: null,
+    light: 'medium',
+    photoperiodH: { min: 10, max: 12 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ALL_ZONES,
+    allowedAltitudes: ALL_ALTITUDES,
+    allowedMoistures: ALL_MOISTURES,
+    estimatedFields: ['ph', 'khDkh'],
+  },
+  pond_wetland: {
+    id: 'pond_wetland',
+    nameZh: '池塘濕地',
+    landPercent: { min: 30, max: 50 },
+    waterDepthCm: { min: 10, max: 30 },
+    waterTempC: { min: 4, max: 25 },
+    waterTempTropicalC: { min: 24, max: 30 },
+    ph: { min: 6.5, max: 8.0 },
+    khDkh: { min: 4, max: 10 },
+    salinityPpt: NONE,
+    flow: 0,
+    airTempC: { min: 15, max: 28 },
+    humidityPercent: { min: 60, max: 80 },
+    mistingPerDay: { min: 0, max: 1 },
+    landSubstrate: 'soil_mix',
+    baskingC: 30,
+    light: 'high',
+    photoperiodH: { min: 12, max: 14 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical', 'temperate', 'boreal'],
+    allowedAltitudes: ['lowland', 'hill', 'montane'],
+    allowedMoistures: ['humid', 'seasonal', 'mediterranean'],
+    estimatedFields: [
+      'landPercent',
+      'khDkh',
+      'airTempC',
+      'humidityPercent',
+      'baskingC',
+      'photoperiodH',
+    ],
+  },
+  blackwater: {
+    id: 'blackwater',
+    nameZh: '黑水沼澤',
+    landPercent: { min: 0, max: 30 },
+    waterDepthCm: { min: 20, max: 50 },
+    waterTempC: { min: 26, max: 30 },
+    ph: { min: 4.0, max: 6.0 },
+    khDkh: { min: 0, max: 1 },
+    salinityPpt: NONE,
+    flow: 0.1,
+    airTempC: { min: 26, max: 30 },
+    humidityPercent: { min: 80, max: 95 },
+    mistingPerDay: { min: 1, max: 2 },
+    landSubstrate: 'leaf_litter',
+    baskingC: null,
+    light: 'low',
+    photoperiodH: { min: 10, max: 12 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical'],
+    allowedAltitudes: ['lowland'],
+    allowedMoistures: ['humid'],
+    estimatedFields: ['landPercent', 'humidityPercent'],
+  },
+  rainforest_floor: {
+    id: 'rainforest_floor',
+    nameZh: '雨林地面',
+    landPercent: { min: 85, max: 100 },
+    waterDepthCm: { min: 0, max: 5 },
+    waterTempC: { min: 22, max: 26 },
+    ph: { min: 5.5, max: 7.0 },
+    khDkh: { min: 1, max: 3 },
+    salinityPpt: NONE,
+    flow: 0,
+    airTempC: { min: 20, max: 27 },
+    humidityPercent: { min: 80, max: 100 },
+    mistingPerDay: { min: 2, max: 6 },
+    landSubstrate: 'leaf_litter',
+    baskingC: null,
+    light: 'low',
+    photoperiodH: { min: 12, max: 12 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical'],
+    allowedAltitudes: ['lowland', 'hill'],
+    allowedMoistures: ['humid'],
+    estimatedFields: ['ph', 'khDkh'],
+  },
+  cloud_forest: {
+    id: 'cloud_forest',
+    nameZh: '雲霧林',
+    landPercent: { min: 90, max: 100 },
+    waterDepthCm: { min: 0, max: 5 },
+    waterTempC: { min: 15, max: 22 },
+    ph: { min: 6.0, max: 7.0 },
+    khDkh: { min: 1, max: 3 },
+    salinityPpt: NONE,
+    flow: 0.1,
+    airTempC: { min: 13, max: 24 },
+    humidityPercent: { min: 85, max: 100 },
+    mistingPerDay: { min: 3, max: 6 },
+    landSubstrate: 'moss',
+    baskingC: null,
+    light: 'medium',
+    photoperiodH: { min: 12, max: 12 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical'],
+    allowedAltitudes: ['hill', 'montane', 'alpine'],
+    allowedMoistures: ['humid'],
+    estimatedFields: ['ph', 'khDkh'],
+  },
+  mangrove: {
+    id: 'mangrove',
+    nameZh: '紅樹林河口',
+    landPercent: { min: 50, max: 66 },
+    waterDepthCm: { min: 5, max: 30 },
+    waterTempC: { min: 24, max: 30 },
+    ph: { min: 7.5, max: 8.3 },
+    khDkh: { min: 8, max: 12 },
+    salinityPpt: { min: 7, max: 20 },
+    flow: 0.5,
+    airTempC: { min: 24, max: 30 },
+    humidityPercent: { min: 70, max: 90 },
+    mistingPerDay: { min: 1, max: 2 },
+    landSubstrate: 'soil_mix',
+    baskingC: null,
+    light: 'high',
+    photoperiodH: { min: 12, max: 12 },
+    tide: true,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical'],
+    allowedAltitudes: ['lowland'],
+    allowedMoistures: ALL_MOISTURES,
+    estimatedFields: ['ph', 'khDkh'],
+  },
+  intertidal: {
+    id: 'intertidal',
+    nameZh: '岩岸潮間帶',
+    landPercent: { min: 10, max: 30 },
+    waterDepthCm: { min: 10, max: 40 },
+    waterTempC: { min: 10, max: 16 },
+    waterTempTropicalC: { min: 24, max: 28 },
+    ph: { min: 8.0, max: 8.3 },
+    khDkh: { min: 7, max: 10 },
+    salinityPpt: { min: 32, max: 35 },
+    flow: 0.9,
+    airTempC: null,
+    humidityPercent: null,
+    mistingPerDay: NONE,
+    landSubstrate: null,
+    baskingC: null,
+    light: 'high',
+    photoperiodH: { min: 12, max: 12 },
+    tide: true,
+    seasonalDrying: false,
+    allowedZones: ALL_ZONES,
+    allowedAltitudes: ['lowland'],
+    allowedMoistures: ALL_MOISTURES,
+    estimatedFields: [],
+  },
+  coral_reef: {
+    id: 'coral_reef',
+    nameZh: '珊瑚礁',
+    landPercent: NONE,
+    waterDepthCm: { min: 40, max: 60 },
+    waterTempC: { min: 24, max: 28 },
+    ph: { min: 8.1, max: 8.4 },
+    khDkh: { min: 7, max: 11 },
+    salinityPpt: { min: 34, max: 36 },
+    flow: 0.9,
+    airTempC: null,
+    humidityPercent: null,
+    mistingPerDay: NONE,
+    landSubstrate: null,
+    baskingC: null,
+    light: 'high',
+    photoperiodH: { min: 8, max: 12 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical'],
+    allowedAltitudes: ['lowland'],
+    allowedMoistures: ALL_MOISTURES,
+    estimatedFields: [],
+  },
+  desert: {
+    id: 'desert',
+    nameZh: '沙漠',
+    landPercent: { min: 95, max: 100 },
+    waterDepthCm: { min: 0, max: 2 },
+    waterTempC: null,
+    ph: null,
+    khDkh: null,
+    salinityPpt: NONE,
+    flow: 0,
+    airTempC: { min: 29, max: 35 },
+    humidityPercent: { min: 20, max: 40 },
+    mistingPerDay: NONE,
+    landSubstrate: 'soil_mix',
+    baskingC: 51,
+    light: 'very_high',
+    photoperiodH: { min: 12, max: 14 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical', 'temperate'],
+    allowedAltitudes: ['lowland', 'hill', 'montane'],
+    allowedMoistures: ['semiarid', 'arid'],
+    estimatedFields: [],
+  },
+  savanna_pond: {
+    id: 'savanna_pond',
+    nameZh: '莽原水塘',
+    landPercent: { min: 20, max: 40 },
+    waterDepthCm: { min: 10, max: 30 },
+    waterTempC: { min: 22, max: 28 },
+    ph: { min: 6.5, max: 7.5 },
+    khDkh: { min: 1, max: 3 },
+    salinityPpt: NONE,
+    flow: 0,
+    airTempC: { min: 18, max: 35 },
+    humidityPercent: { min: 40, max: 70 },
+    mistingPerDay: { min: 0, max: 1 },
+    landSubstrate: 'soil_mix',
+    baskingC: 35,
+    light: 'high',
+    photoperiodH: { min: 12, max: 12 },
+    tide: false,
+    seasonalDrying: true,
+    allowedZones: ['tropical', 'subtropical'],
+    allowedAltitudes: ['lowland', 'hill'],
+    allowedMoistures: ['seasonal'],
+    estimatedFields: ['landPercent', 'airTempC', 'humidityPercent', 'baskingC'],
+  },
+  temperate_woodland: {
+    id: 'temperate_woodland',
+    nameZh: '溫帶林地',
+    landPercent: { min: 90, max: 100 },
+    waterDepthCm: { min: 0, max: 2 },
+    waterTempC: { min: 13, max: 20 },
+    ph: { min: 6.0, max: 7.0 },
+    khDkh: { min: 1, max: 3 },
+    salinityPpt: NONE,
+    flow: 0,
+    airTempC: { min: 13, max: 20 },
+    humidityPercent: { min: 60, max: 80 },
+    mistingPerDay: { min: 1, max: 1 },
+    landSubstrate: 'leaf_litter',
+    baskingC: null,
+    light: 'low',
+    photoperiodH: { min: 10, max: 14 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['temperate'],
+    allowedAltitudes: ['lowland', 'hill', 'montane'],
+    allowedMoistures: ['humid', 'mediterranean'],
+    estimatedFields: ['ph'],
+  },
+  cave_spring: {
+    id: 'cave_spring',
+    nameZh: '洞穴湧泉',
+    landPercent: { min: 0, max: 20 },
+    waterDepthCm: { min: 10, max: 30 },
+    waterTempC: { min: 8, max: 15 },
+    ph: { min: 7.0, max: 8.0 },
+    khDkh: { min: 8, max: 20 },
+    salinityPpt: NONE,
+    flow: 0.5,
+    airTempC: { min: 8, max: 15 },
+    humidityPercent: { min: 90, max: 100 },
+    mistingPerDay: NONE,
+    landSubstrate: null,
+    baskingC: null,
+    light: 'low',
+    photoperiodH: { min: 0, max: 8 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['tropical', 'subtropical', 'temperate', 'boreal'],
+    allowedAltitudes: ALL_ALTITUDES,
+    allowedMoistures: ALL_MOISTURES,
+    estimatedFields: ['landPercent', 'khDkh', 'humidityPercent', 'photoperiodH'],
+  },
+  peat_bog: {
+    id: 'peat_bog',
+    nameZh: '泥炭沼',
+    landPercent: { min: 60, max: 80 },
+    waterDepthCm: { min: 5, max: 20 },
+    waterTempC: { min: 5, max: 25 },
+    ph: { min: 3.5, max: 4.5 },
+    khDkh: { min: 0, max: 0.5 },
+    salinityPpt: NONE,
+    flow: 0,
+    airTempC: { min: 10, max: 28 },
+    humidityPercent: { min: 70, max: 90 },
+    mistingPerDay: { min: 1, max: 1 },
+    landSubstrate: 'moss',
+    baskingC: null,
+    light: 'high',
+    photoperiodH: { min: 12, max: 16 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ['temperate', 'boreal'],
+    allowedAltitudes: ['lowland', 'hill', 'montane'],
+    allowedMoistures: ['humid'],
+    estimatedFields: ['landPercent', 'waterTempC', 'airTempC', 'humidityPercent', 'photoperiodH'],
+  },
+  alpine_stream: {
+    id: 'alpine_stream',
+    nameZh: '高山溪流',
+    landPercent: { min: 0, max: 10 },
+    waterDepthCm: { min: 10, max: 30 },
+    waterTempC: { min: 2, max: 10 },
+    ph: { min: 6.5, max: 7.5 },
+    khDkh: { min: 2, max: 6 },
+    salinityPpt: NONE,
+    flow: 0.9,
+    airTempC: { min: 0, max: 15 },
+    humidityPercent: { min: 60, max: 90 },
+    mistingPerDay: NONE,
+    landSubstrate: null,
+    baskingC: null,
+    light: 'medium',
+    photoperiodH: { min: 12, max: 16 },
+    tide: false,
+    seasonalDrying: false,
+    allowedZones: ALL_ZONES,
+    allowedAltitudes: ['alpine'],
+    allowedMoistures: ['humid'],
+    highLatitudeLowlandAllowed: true,
+    estimatedFields: ['ph', 'khDkh', 'airTempC', 'humidityPercent'],
+  },
+};
+
+export const HABITAT_IDS = Object.keys(HABITATS) as HabitatId[];
