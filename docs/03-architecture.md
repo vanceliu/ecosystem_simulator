@@ -25,7 +25,14 @@ worker：承載 game + engine，與 ui 以訊息溝通
 ```
 src/
   content/
-    archetypes/        各營養層功能群資料
+    archetype.ts       功能群型別（Archetype、生活史、耐受範圍、最小飼養空間）
+    archetypes/
+      skeleton.ts      分類骨架，與 02 §3–§4 表格對應
+      groups.ts        資料檔分組
+      groupTypes.ts    分組資料型別
+      <組名>.ts        各組功能群資料（9 組）
+      sources/         各組來源登錄表
+      index.ts         ARCHETYPE_DATA、getArchetype
     tankOptions.ts     建缸選項
     sources.ts         來源登錄表
     sourced.ts         參數依據型別（measured／derived／estimated）
@@ -38,11 +45,17 @@ src/
     location.ts        地點分類
     archetypeIds.ts    功能群 ID
   generation/
-    traits.ts
-    naming.ts
-    genotype.ts
-    phenotype.ts
-    mutation.ts
+    hash.ts            FNV-1a 雜湊、決定性亂數來源
+    loci.ts            基因座定義與權重
+    genotype.ts        混合進位 ↔ base-36 編碼
+    phenotype.ts       表現型推導
+    gompertz.ts        Gompertz 參數求解、存活函數
+    sampling.ts        基準權重、環境加權、飼養空間體型限制
+    naming.ts          學名雙射、變種名、中文俗名
+    rarity.ts          稀有度分數與等級
+    mutation.ts        繁殖突變
+    species.ts         物種描述組裝
+    index.ts
   engine/
     rng.ts
     types.ts
@@ -150,6 +163,7 @@ step(state: SimulationState, commands: Command[]): { state: SimulationState; eve
 | 純度強制 | `src/content`、`src/generation`、`src/engine` 禁用 `Math.random`、`Date`、`performance`、`crypto`、計時器、`window`、`document`、`self`、`globalThis` 等 |
 | 規則測試 | `tests/lint/layer-rules.test.ts` |
 | CI | `.github/workflows/ci.yml`；僅 `main` 分支 push；`format:check` → `lint` → `test` → `build` |
+| 分支 | `main`（發布）← `develop`（整合驗證）← 功能分支 `m<n>-<主題>`；功能分支合併後刪除 |
 
 ## 6. 程式規範
 

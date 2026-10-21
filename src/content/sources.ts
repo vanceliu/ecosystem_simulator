@@ -1,9 +1,19 @@
+import { MICROBES_AQUATIC_SOURCES } from './archetypes/sources/microbes_aquatic';
+import { LAND_SOIL_SOURCES } from './archetypes/sources/land_soil';
+import { LAND_ARTHROPODS_SOURCES } from './archetypes/sources/land_arthropods';
+import { AQUATIC_SMALL_SOURCES } from './archetypes/sources/aquatic_small';
+import { AQUATIC_BENTHIC_SOURCES } from './archetypes/sources/aquatic_benthic';
+import { AMPHIBIANS_SEMI_SOURCES } from './archetypes/sources/amphibians_semi';
+import { REPTILES_SMALL_FISH_SOURCES } from './archetypes/sources/reptiles_small_fish';
+import { LARGE_FRESHWATER_SOURCES } from './archetypes/sources/large_freshwater';
+import { LARGE_MARINE_SOURCES } from './archetypes/sources/large_marine';
+
 export interface Source {
   readonly title: string;
   readonly url?: string;
 }
 
-export const SOURCES = {
+const CORE_SOURCES = {
   asm1: {
     title:
       'Henze et al. 1987, Activated Sludge Model No. 1, default parameters at 20 °C (WaterTAP)',
@@ -100,7 +110,7 @@ export const SOURCES = {
     url: 'https://om.vuvb.uniza.sk/index.php/OM/article/view/48',
   },
   soilBacteria: {
-    title: 'Soil bacteria 10⁸–10⁹ cells/g (CU Boulder)',
+    title: 'CU Boulder record of soil microbial growth-rate study (generation times)',
     url: 'https://vivo.colorado.edu/display/pubid_327935',
   },
   feedLeaching: {
@@ -187,4 +197,31 @@ export const SOURCES = {
   },
 } as const satisfies Record<string, Source>;
 
+/** Archetype group source keys never collide with core keys (tests/content/archetypes.test.ts). */
+export const SOURCES = {
+  ...CORE_SOURCES,
+  ...MICROBES_AQUATIC_SOURCES,
+  ...LAND_SOIL_SOURCES,
+  ...LAND_ARTHROPODS_SOURCES,
+  ...AQUATIC_SMALL_SOURCES,
+  ...AQUATIC_BENTHIC_SOURCES,
+  ...AMPHIBIANS_SEMI_SOURCES,
+  ...REPTILES_SMALL_FISH_SOURCES,
+  ...LARGE_FRESHWATER_SOURCES,
+  ...LARGE_MARINE_SOURCES,
+} as const satisfies Record<string, Source>;
+
 export type SourceId = keyof typeof SOURCES;
+
+export const SOURCE_GROUPS: readonly Readonly<Record<string, Source>>[] = [
+  CORE_SOURCES,
+  MICROBES_AQUATIC_SOURCES,
+  LAND_SOIL_SOURCES,
+  LAND_ARTHROPODS_SOURCES,
+  AQUATIC_SMALL_SOURCES,
+  AQUATIC_BENTHIC_SOURCES,
+  AMPHIBIANS_SEMI_SOURCES,
+  REPTILES_SMALL_FISH_SOURCES,
+  LARGE_FRESHWATER_SOURCES,
+  LARGE_MARINE_SOURCES,
+];

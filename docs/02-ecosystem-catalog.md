@@ -131,7 +131,7 @@
 
 | ID | 名稱 | 食物 | 棲位 | 鹽度 | 型態 | 來源途徑 | 出現／優勢條件 | 特殊機制 |
 |---|---|---|---|---|---|---|---|---|
-| `piscivore_fish` | 小型肉食魚（≤ 20 cm：短鰭蓑鮋、小型梭口魚） | 魚、蝦 | 水層 | FBM | cohort | player_release、open_inflow | 容量 ≥ 160 L | — |
+| `piscivore_fish` | 小型肉食魚（≤ 20 cm：短鰭蓑鮋、小型梭口魚） | 魚、蝦 | 水層 | FBM | cohort | player_release、open_inflow | 容量 ≥ 154 L | — |
 
 ### 3.9 陸域生產者與分解者
 
@@ -218,7 +218,7 @@
 | `oscar` | 大型雜食慈鯛（地圖魚） | L5 | 雜食、掠食 | F | cohort | player_release | 缸內易繁殖 |
 | `pacu` | 淡水白鯧 | L4 | 果實、種子、浮游動物 | F | cohort | player_release | — |
 | `silver_dollar` | 銀板 | L4 | 水草 | F | cohort | player_release | 群游；啃食水草 |
-| `koi` | 錦鯉 | L4 | 底棲雜食 | F | cohort | player_release | 冷水耐受 4–28 °C |
+| `koi` | 錦鯉 | L4 | 底棲雜食 | F | cohort | player_release | 耐受 3–35 °C |
 | `goldfish` | 金魚 | L4 | 雜食 | F | cohort | player_release | 冷水耐受 |
 | `large_pleco` | 大型異型 | L4 | 碎屑、藻 | F | cohort | player_release | 挖洞產卵 |
 | `giant_catfish` | 巨型掠食鯰（紅尾鯰、虎鯰） | L6 | 夜行：魚 | F | cohort | player_release | — |

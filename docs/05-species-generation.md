@@ -24,9 +24,9 @@ interface Species {
 | 基因座 | 等位基因數 | 等位基因 | 表現型 |
 |---|---|---|---|
 | `size` 體型 | 7 | 微、小、中小、中、中大、大、巨 | `adultMass`：功能群質量範圍（對數）七等分取區間中點；超出缸可容納體長時權重為 0（[09](09-life-history.md) §7） |
-| `thermal` 溫度帶 | 5 | 冷水、溫帶、廣溫、暖水、熱帶 | 溫度 opt 14／20／22／26／29 °C；廣溫寬度 × 1.6，其餘 × 1.0；截於功能群範圍 |
-| `salinity` 鹽度帶（W、A） | 4 | 低端狹鹽、低端廣鹽、高端廣鹽、高端狹鹽 | 功能群鹽度範圍內取低／高端，寬度 × 0.5（狹）或 × 1.0（廣） |
-| `humidity` 濕度帶（T，取代 `salinity`） | 4 | 乾燥、中濕、潮濕、飽和 | `humidityMin` 30／50／70／85% |
+| `thermal` 溫度帶 | 5 | 冷水、溫帶、廣溫、暖水、熱帶 | 溫度 opt 14／20／22／26／29 °C（限制在功能群範圍內側 10%）；物種耐受半寬 = 功能群範圍半寬 × 0.6，廣溫 × 1.6；截於功能群範圍 |
+| `salinity` 鹽度帶（W、A） | 4 | 低端狹鹽、低端廣鹽、高端廣鹽、高端狹鹽 | 自功能群鹽度範圍的低端或高端起算，寬度 = 範圍 × 0.4（狹）或 × 0.75（廣） |
+| `humidity` 濕度帶（T，取代 `salinity`） | 4 | 乾燥、中濕、潮濕、飽和 | `humidityMin` = 功能群下限 −20／−10／0／+10%，限制於 10–95% |
 | `ph` 酸鹼帶 | 3 | 偏酸、中性、偏鹼 | pH opt 6.5／7.2／8.0，截於功能群範圍 |
 | `hardiness` 耐受 | 3 | 嬌弱、一般、強健 | `nh3Max`、`no2Max` × 0.6／1.0／1.5；`o2Min` × 1.3／1.0／0.8；成長率 × 1.1／1.0／0.9 |
 | `growth` 成長策略 | 3 | 快速、均衡、節能 | `muMax` 或 `r0` × 1.25／1.0／0.8；同化效率 × 0.9／1.0／1.1 |
@@ -68,6 +68,7 @@ interface Species {
 
 ### 2.6 權衡約束（推導後套用）
 
+- `eggMass` 基準 = `adultMass × 0.01`
 - `clutchSize × eggMass ≤ 0.3 × adultMass`
 - 具 `shell` 防禦 → 成長率 × 0.85
 - 具 `toxin` 防禦 → 代謝率 × 1.1
@@ -96,7 +97,7 @@ interface Species {
 | 7 等位（`size`） | 1、4、10、14、10、4、1 |
 | 5 等位（`thermal`） | 1、4、6、4、1 |
 | 3 等位有序（`ph`、`hardiness`、`growth`、`lifespan`） | 1、3、1 |
-| `mutation` | 無 9,990；每種突變 1 |
+| `mutation` | 無 10,000；每種突變 1 |
 | 其他 | 均等；功能群可覆寫 |
 
 **湧現抽樣**：環境相關基因座（`thermal`、`salinity`、`ph`、`hardiness`）權重 × `max(0.05, 該等位基因表現型在目前缸況的 f_env)`，再正規化抽樣；其餘基因座依基準權重。
@@ -109,14 +110,15 @@ interface Species {
 
 學名與基因型一一對應（雙射），無需碰撞處理。
 
-- **屬名** = 字根 + 體型音節 + 字尾
-  - 字根：功能群定義 4 個，依 `diet`（cohort）或 `metabolism`（biomass）選取
-  - 體型音節：7 個，依 `size` 選取
-  - 字尾：依 `habitat`（cohort，2 個）或 `morphology`（biomass，8 個）選取
-  - 每功能群屬數：cohort 56、biomass 224
-- **種小名** = 其餘基因座（不含 `mutation`）組成的混合進位索引，轉為 base-64 音節（16 子音 × 4 母音），定長：cohort 4 音節、biomass 3 音節；接上與屬名詞性一致的拉丁字尾。
+- **屬名** = 拉丁字幹 + 連接音節 + 體型音節 + 字尾
+  - 拉丁字幹：每功能群 1 個（取自代表屬名，例 `Cyclo`），全功能群唯一
+  - 連接音節：`ra`、`li`、`mo`、`ne`，依 `diet`（cohort）或 `metabolism`（biomass）選取
+  - 體型音節：`pi`、`mi`、`ta`、`ro`、`ma`、`gra`、`gi`，依 `size` 選取
+  - 字尾：cohort 依 `habitat`（`ella`、`opsis`）；biomass 依 `morphology`（`ella`、`ina`、`ula`、`ia`、`ium`、`opsis`、`ites`、`ora`）
+  - 每功能群屬數：cohort 56、biomass 224；跨功能群屬名不重複
+- **種小名** = 其餘基因座（不含 `mutation`）組成的混合進位索引，轉為 base-64 音節（16 子音 × 4 母音），定長：cohort 4 音節、biomass 3 音節；接上與屬名詞性一致的拉丁字尾（`-ium` 中性 `um`、`-ites` 陽性 `us`、其餘陰性 `a`）。子音：b c d f g l m n p r s t v qu th ph；母音：a e i o。
 - **變種名**：`mutation` ≠ 無時附加 `var.` + 變種名：`albina`、`melanica`、`gigantea`、`nana`、`lucifera`、`longaeva`、`fecunda`、`eurytherma`、`euryhalina`、`resistens`。
-- 例：`Cyclomira kelosatia`、`Cyclomira kelosatia var. albina`
+- 例：`Cycloramaella betolia`、`Cycloramaella betolia var. albina`
 
 ### 4.2 中文俗名（描述性）
 

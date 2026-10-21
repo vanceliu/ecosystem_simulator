@@ -102,7 +102,7 @@ export const WILD_MATERIALS = {
   /** cm of wild substrate whose surface carries organic biofilm */
   organicSubstrateDepthCm: estimated(1, 'only the oxic top layer accumulates periphyton'),
   /** cells per g of wild soil */
-  soilBacteriaPerG: derived(3e8, 'soilBacteria', 'geometric mean of 10⁸–10⁹ cells/g'),
+  soilBacteriaPerG: derived(3e8, 'land_soil_bionumbersSoil', 'geometric mean of 10⁸–10⁹ cells/g'),
   /** g/cm³ */
   soilBulkDensity: estimated(0.8, 'organic-rich topsoil'),
   /** fungal biomass relative to bacterial biomass in wild soil */

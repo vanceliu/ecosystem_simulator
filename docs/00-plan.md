@@ -20,21 +20,10 @@
 
 ---
 
-## M2 物種生成
-
-- ⬜ `Archetype` 型別與 [02](02-ecosystem-catalog.md) 全部 111 個功能群資料，含 [09](09-life-history.md) 生活史、密度、最小飼養空間
-- ⬜ 基因座定義與表現型推導，含 `humidity` 濕度帶與突變等位基因效果（[05](05-species-generation.md) §2）
-- ⬜ 基因型編碼（混合進位 ↔ base-36）與物種登錄表
-- ⬜ 基因型抽樣：基準權重、環境加權、飼養空間體型限制（[05](05-species-generation.md) §3、[09](09-life-history.md) §7）
-- ⬜ 命名器：學名雙射編碼、變種名、中文俗名（[05](05-species-generation.md) §4）
-- ⬜ 稀有度計算（[05](05-species-generation.md) §6）
-- ⬜ Gompertz 參數求解
-- ⬜ 測試：決定性、編碼 ↔ 學名互逆、物種空間計數、表現型落在範圍內
-- ⬜ 測試：每個生物參數皆有 `basis`；measured／derived 皆有 `source`；derived 皆有推算方式；每個功能群皆有年齡上限
-
 ## M3 族群動態
 
 - ⬜ biomass 族群成長（微生物、藻、原生動物、水草、苔蘚、陸生植物、真菌）
+- ⬜ 引擎微生物動力學（`content/microbes.ts`）改由 `aob`、`nob`、`heterotroph`、`denitrifier` 功能群的表現型提供，移除重複參數
 - ⬜ cohort 族群：年齡世代群、攝食（Holling II）、代謝（Kleiber）、繁殖、死亡
 - ⬜ 互動表與效能保險（[04](04-simulation-model.md) §9.2）
 - ⬜ 測試：族群守恆原則——無任何程式路徑在模擬過程與玩家指令之外改變族群（[04](04-simulation-model.md) §9.1）

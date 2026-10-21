@@ -39,6 +39,8 @@ M3 起提供 CLI 模擬器：`npm run sim -- --seed 42 --days 90 --preset freshw
 
 CI（GitHub Actions）只在 `main` 分支 push 時執行：格式檢查、lint、測試、建置。
 
+分支：`main`（發布）← `develop`（整合驗證）← 功能分支（`m<n>-<主題>`，合併後刪除）。
+
 ## 文件
 
 | 文件 | 讀者 | 內容 |
