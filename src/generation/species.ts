@@ -5,7 +5,14 @@ import { derivePhenotype, type Phenotype } from './phenotype';
 import { rarityScore, rarityTier, type RarityTier } from './rarity';
 
 export type SpeciesOrigin =
-  'background' | 'water' | 'hitchhiker' | 'open_inflow' | 'release' | 'mutation';
+  | 'background'
+  | 'water'
+  | 'hitchhiker'
+  | 'open_inflow'
+  | 'outside'
+  | 'feeder'
+  | 'release'
+  | 'mutation';
 
 /** Persisted species record; everything else derives from the code (docs/05 §1). */
 export interface SpeciesRecord {

@@ -15,12 +15,39 @@ export interface SamplingEnvironment {
   readonly maxLengthMm?: number;
 }
 
-/** docs/04 §5.1 tolerance curve */
+/** docs/04 §5.1: share of the salinity window over which performance ramps down at each limit */
+export const SALINITY_RAMP_SHARE = 0.2;
+/** docs/04 §5.1: pH units around the optimum at full performance */
+export const PH_PLATEAU = 0.8;
+
+/** docs/04 §5.1 temperature curve: Gaussian around opt, zero outside [min, max]. */
 export function toleranceFactor(value: number, range: ToleranceRange): number {
   if (value < range.min || value > range.max) return 0;
   const width = (range.max - range.min) / 4;
   if (width <= 0) return value === range.opt ? 1 : 0;
   return Math.exp(-(((value - range.opt) / width) ** 2));
+}
+
+/** Linear ramps from 0 at the limits to 1 at the plateau edges; 1 inside the plateau. */
+function plateau(value: number, min: number, low: number, high: number, max: number): number {
+  if (value < min || value > max) return 0;
+  if (value < low) return low > min ? (value - min) / (low - min) : 1;
+  if (value > high) return high < max ? (max - value) / (max - high) : 1;
+  return 1;
+}
+
+/** docs/04 §5.1 salinity response; a window starting at 0 ppt has no lower ramp. */
+export function salinityFactor(value: number, range: ToleranceRange): number {
+  const ramp = (range.max - range.min) * SALINITY_RAMP_SHARE;
+  const low = range.min <= 0 ? range.min : range.min + ramp;
+  return plateau(value, range.min, low, range.max - ramp, range.max);
+}
+
+/** docs/04 §5.1 pH response: full within ±PH_PLATEAU of the optimum. */
+export function phResponse(value: number, range: ToleranceRange): number {
+  const low = Math.max(range.min, range.opt - PH_PLATEAU);
+  const high = Math.min(range.max, range.opt + PH_PLATEAU);
+  return plateau(value, range.min, low, high, range.max);
 }
 
 function pick(weights: readonly number[], random: RandomSource): number {
@@ -76,12 +103,10 @@ function environmentWeights(
           : weight *
               Math.max(
                 MIN_ENVIRONMENT_FACTOR,
-                toleranceFactor(environment.salinityPpt, phenotype.salinityPpt),
+                salinityFactor(environment.salinityPpt, phenotype.salinityPpt),
               );
       case 'ph':
-        return (
-          weight * Math.max(MIN_ENVIRONMENT_FACTOR, toleranceFactor(environment.ph, phenotype.ph))
-        );
+        return weight * Math.max(MIN_ENVIRONMENT_FACTOR, phResponse(environment.ph, phenotype.ph));
       default:
         return weight;
     }

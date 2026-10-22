@@ -24,6 +24,10 @@ const NITRIFIER_TEMPERATURE = range(
   estimated(4, 'nitrification persists slowly in cold ponds', 'microbes_aquatic_nitrosomonasWiki'),
   estimated(40, 'activity collapses above 40 °C', 'microbes_aquatic_nitrosomonasWiki'),
 );
+const HETEROTROPH_PH_OPTIMUM = range(
+  estimated(6.0, 'heterotrophic optimum lower bound'),
+  estimated(8.5, 'heterotrophic optimum upper bound'),
+);
 const NITRIFIER_DENSITY = {
   typical: range(
     estimated(1e3, 'docs/09 §3 free-water nitrifiers 10³–10⁵ /mL（估）'),
@@ -42,6 +46,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Nitroso',
     nounZh: '亞硝化菌',
     trophicMode: 'chemoautotroph',
+    niche: 'surface',
+    kinetics: {
+      muMax: derived(0.71, 'bsm1', 'ASM1/BSM1 µA 0.5 d⁻¹ at ≈ 15 °C × 1.072^5'),
+      halfSat: { substrate: measured(1.0, 'asm1'), o2: measured(0.4, 'asm1') },
+      yieldCoefficient: measured(0.24, 'asm1'),
+      phOptimum: range(measured(7.0, 'nitrifierPh'), measured(8.5, 'perliteBiofilter')),
+    },
     flags: ['chemoautotroph'],
     morphologies: ['短桿狀', '球狀', '螺旋狀', '分葉狀', '微菌落', '鏈狀', '扁平附著', '囊包群體'],
     specialisedMetabolism: '耐低氧：氧半飽和常數 × 0.5，可於生物膜深層與低流速處運作',
@@ -92,6 +103,24 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Nitrospir',
     nounZh: '硝化螺菌',
     trophicMode: 'chemoautotroph',
+    niche: 'surface',
+    kinetics: {
+      muMax: derived(
+        0.258,
+        'nitrospiraKinetics',
+        'Nitrospira defluvii generation time 37 h at 28 °C → 0.45 d⁻¹, ÷ 1.072^8',
+      ),
+      halfSat: {
+        substrate: derived(0.126, 'nitrospiraKinetics', 'Km 9 µM NO2− × 14 mg N/mmol'),
+        o2: derived(0.4, 'asm1', 'ASM1 autotroph oxygen half-saturation applied to NOB'),
+      },
+      yieldCoefficient: derived(
+        0.0225,
+        'nitrospiraKinetics',
+        '0.122 mg protein/mmol NO2− ÷ 14 mg N ÷ 0.55 protein fraction × 1.42 COD/dry mass',
+      ),
+      phOptimum: range(measured(7.0, 'nitrifierPh'), measured(8.5, 'perliteBiofilter')),
+    },
     flags: ['chemoautotroph'],
     morphologies: ['彎桿狀', '螺旋狀', '短桿狀', '球狀', '多形', '微菌落', '絲狀鏈', '扁平附著'],
     specialisedMetabolism: '完全硝化（comammox）：可直接將氨氧化為硝酸鹽',
@@ -134,6 +163,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Pseudomon',
     nounZh: '異營菌',
     trophicMode: 'decomposer',
+    niche: 'water_column',
+    kinetics: {
+      muMax: derived(5.66, 'bsm1', 'ASM1/BSM1 µH 4.0 d⁻¹ at ≈ 15 °C × 1.072^5'),
+      halfSat: { substrate: measured(10, 'asm1'), o2: measured(0.2, 'asm1') },
+      yieldCoefficient: measured(0.67, 'asm1'),
+      phOptimum: HETEROTROPH_PH_OPTIMUM,
+    },
     flags: [],
     morphologies: ['球狀', '桿狀', '弧狀', '螺旋狀', '絲狀', '鏈狀', '柄狀', '菌膠團'],
     specialisedMetabolism: '寡營養型：可分解難分解有機物（腐植質、木質），於低 DOC 下維持成長',
@@ -182,6 +218,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Paracocc',
     nounZh: '脫氮菌',
     trophicMode: 'decomposer',
+    niche: 'sediment',
+    kinetics: {
+      muMax: derived(4.53, 'bsm1', 'ASM1/BSM1 µH 4.0 × anoxic ηg 0.8 at ≈ 15 °C × 1.072^5'),
+      halfSat: { substrate: measured(10, 'asm1'), o2: measured(0.2, 'asm1') },
+      yieldCoefficient: measured(0.67, 'asm1'),
+      phOptimum: HETEROTROPH_PH_OPTIMUM,
+    },
     flags: [],
     morphologies: ['球桿狀', '短桿狀', '長桿狀', '球狀', '弧狀', '鏈狀', '菌膠團', '多形'],
     specialisedMetabolism: '好氧脫氮：溶氧未耗盡時仍可將硝酸鹽還原為氮氣',
@@ -229,6 +272,19 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Saproleg',
     nounZh: '水黴',
     trophicMode: 'decomposer',
+    niche: 'surface',
+    kinetics: {
+      muMax: estimated(
+        2.0,
+        'fungal proxy: Aspergillus nidulans submerged 0.090 h⁻¹ at 20 °C × 24 h',
+        'microbes_aquatic_trinci1969',
+      ),
+      halfSat: {
+        substrate: estimated(10, 'heterotroph KS applied to oomycetes', 'asm1'),
+        o2: estimated(0.2, 'heterotroph KOH applied to oomycetes', 'asm1'),
+      },
+      yieldCoefficient: estimated(0.67, 'heterotroph YH applied to oomycetes', 'asm1'),
+    },
     flags: [],
     morphologies: ['棉絮狀', '放射狀', '分枝絲狀', '稀疏絲狀', '叢生', '墊狀', '網狀', '毛球狀'],
     specialisedMetabolism: '寄生型：可侵染受傷或虛弱的魚體與魚卵',
@@ -295,6 +351,20 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Zoogloe',
     nounZh: '菌膜',
     trophicMode: 'decomposer',
+    niche: 'surface',
+    kinetics: {
+      muMax: measured(6.0, 'microbes_aquatic_henze1987Table'),
+      halfSat: {
+        substrate: derived(
+          9,
+          'microbes_aquatic_nufebHet',
+          'geometric mean of biofilm Ks 4 and Henze 1987 20 mg COD/L',
+        ),
+        o2: measured(0.2, 'asm1'),
+      },
+      yieldCoefficient: measured(0.67, 'asm1'),
+      phOptimum: HETEROTROPH_PH_OPTIMUM,
+    },
     flags: [],
     morphologies: ['薄膜', '黏層', '絲狀叢', '斑塊', '菌墊', '蓬鬆絮狀', '網狀', '光滑凝膠'],
     specialisedMetabolism: '光合型：含附著微藻，光照下自行固碳並產氧',
@@ -342,6 +412,22 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Navicul',
     nounZh: '矽藻',
     trophicMode: 'photoautotroph',
+    niche: 'surface',
+    kinetics: {
+      muMax: measured(0.88, 'physiology_affan2007'),
+      halfSat: {
+        nitrogen: derived(0.025, 'physiology_bowie1985', 'midpoint of diatom 0.015–0.03 mg N/L'),
+        phosphorus: derived(0.003, 'physiology_bowie1985', 'geometric mean of 0.001–0.009 mg P/L'),
+        silicate: derived(0.17, 'physiology_bowie1985', '0.08 mg Si/L × 2.139 SiO2/Si'),
+        co2: derived(0.11, 'physiology_bowie1985', '0.03 mg C/L × 3.664 CO2/C'),
+      },
+      lossRate: derived(
+        0.016,
+        'microbes_aquatic_brussaard1998',
+        'chemostat death 0.01 d⁻¹ at 13 °C × 1.072^7',
+      ),
+      darkRespiration: derived(0.068, 'physiology_bowie1985', 'diatom 0.06 d⁻¹ ÷ µmax 0.88'),
+    },
     flags: ['photosynthetic'],
     morphologies: ['舟形', '羽紋', '中心圓盤', '鏈狀', '星狀群體', '扇形', '柄狀附著', '管狀群體'],
     specialisedMetabolism: '低矽型：殼較薄，矽需求 × 0.5',
@@ -404,6 +490,24 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Cladophor',
     nounZh: '綠藻',
     trophicMode: 'photoautotroph',
+    niche: 'surface',
+    kinetics: {
+      muMax: measured(1.08, 'physiology_auerCanale1982'),
+      halfSat: {
+        nitrogen: derived(
+          0.07,
+          'physiology_bowie1985',
+          'geometric mean of benthic algae 0.05–0.1 mg N/L',
+        ),
+        phosphorus: derived(
+          0.006,
+          'physiology_bowie1985',
+          'geometric mean of benthic algae 0.004–0.008 mg P/L',
+        ),
+        co2: derived(0.18, 'physiology_bowie1985', 'geometric mean of 0.03–0.1 mg C/L × 3.664'),
+      },
+      darkRespiration: derived(0.093, 'physiology_bowie1985', 'benthic algae 0.1 d⁻¹ ÷ µmax 1.08'),
+    },
     flags: ['photosynthetic'],
     morphologies: [
       '單列絲狀',
@@ -479,6 +583,16 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Oscillat',
     nounZh: '藍綠菌',
     trophicMode: 'photoautotroph',
+    niche: 'surface',
+    kinetics: {
+      muMax: derived(0.81, 'physiology_bowie1985', 'geometric mean of blue-green 0.41 and 1.6 d⁻¹'),
+      halfSat: {
+        nitrogen: measured(0.015, 'physiology_bowie1985'),
+        phosphorus: measured(0.01, 'physiology_bowie1985'),
+        co2: derived(0.11, 'physiology_bowie1985', '0.03 mg C/L × 3.664 CO2/C'),
+      },
+      darkRespiration: derived(0.062, 'physiology_bowie1985', 'blue-green 0.05 d⁻¹ ÷ µmax 0.81'),
+    },
     flags: ['photosynthetic', 'nitrogen_fixer'],
     morphologies: [
       '絲狀',
@@ -550,6 +664,28 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Chlorell',
     nounZh: '浮游藻',
     trophicMode: 'photoautotroph',
+    niche: 'water_column',
+    kinetics: {
+      muMax: derived(
+        1.6,
+        'physiology_bowie1985',
+        'geometric mean of green algae 1.4 and 1.9 d⁻¹ at 20 °C',
+      ),
+      halfSat: {
+        nitrogen: derived(
+          0.067,
+          'physiology_bowie1985',
+          'geometric mean of green algae 0.03–0.15 mg N/L',
+        ),
+        phosphorus: derived(
+          0.0077,
+          'physiology_bowie1985',
+          'geometric mean of 0.0025–0.024 mg P/L',
+        ),
+        co2: derived(0.11, 'physiology_bowie1985', '0.03 mg C/L × 3.664 CO2/C'),
+      },
+      darkRespiration: derived(0.037, 'physiology_bowie1985', 'green algae 0.06 d⁻¹ ÷ µmax 1.6'),
+    },
     flags: ['photosynthetic'],
     morphologies: ['球狀', '卵形', '新月形', '四聯體', '群體球', '鞭毛單細胞', '鏈狀', '紡錘形'],
     specialisedMetabolism: '混合營養：黑暗或低光下可吸收有機碳維持成長',
@@ -608,6 +744,23 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Egeri',
     nounZh: '水草',
     trophicMode: 'photoautotroph',
+    niche: 'water_floor',
+    kinetics: {
+      muMax: measured(0.045, 'physiology_madsen1995'),
+      halfSat: {
+        nitrogen: estimated(
+          0.1,
+          'no shoot uptake Km found; within macroalgal NH4+ 0.06–0.58 mg N/L',
+        ),
+        phosphorus: estimated(0.01, 'between algal and macroalgal Ks'),
+        co2: derived(3.4, 'physiology_browse1979', 'Egeria apparent Km 77 µM × 44.01/1000'),
+      },
+      darkRespiration: estimated(0.25, 'modest share of maximum growth'),
+    },
+    bodyComposition: {
+      nPerDryMass: derived(0.03, 'physiology_usgsYakima', 'midpoint of 2.61–3.52% N'),
+      pPerDryMass: derived(0.0044, 'physiology_usgsYakima', 'midpoint of 0.42–0.45% P'),
+    },
     flags: ['photosynthetic'],
     morphologies: ['有莖', '蓮座', '匍匐', '浮葉', '苔狀', '帶狀葉', '羽狀葉', '細針葉'],
     specialisedMetabolism: '挺水型：葉伸出水面直接取得空氣中的 CO₂',
@@ -667,6 +820,36 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Caulerp',
     nounZh: '海藻',
     trophicMode: 'photoautotroph',
+    niche: 'water_floor',
+    kinetics: {
+      muMax: derived(
+        0.22,
+        'physiology_tsutsui2015',
+        'geometric mean of Chaetomorpha 0.30 (60%/d at 30 °C ÷ 1.072^10) and Ulva 0.164 (Ale 2011)',
+      ),
+      halfSat: {
+        nitrogen: derived(
+          0.34,
+          'physiology_carneiro2011',
+          'geometric mean of uptake Km 24.3 µM × 14.007/1000',
+        ),
+        phosphorus: derived(0.15, 'physiology_carneiro2011', 'PO4 Ks 5 µM × 30.97/1000'),
+        co2: estimated(0.09, 'bicarbonate user, ≈ 2 µM free CO2'),
+      },
+      darkRespiration: estimated(0.1, 'no macroalgal dark respiration at 20 °C found'),
+    },
+    bodyComposition: {
+      nPerDryMass: derived(
+        0.017,
+        'physiology_sheppard2023',
+        'seaweed C:N 20.2 mol, C 30% of dry mass',
+      ),
+      pPerDryMass: derived(
+        0.001,
+        'physiology_sheppard2023',
+        'seaweed C:P 801 mol, C 30% of dry mass',
+      ),
+    },
     flags: ['photosynthetic'],
     morphologies: ['羽狀', '葡萄狀', '絲團狀', '葉片狀', '扇狀', '分枝狀', '管狀', '殼狀'],
     specialisedMetabolism: '鈣化型：沉積碳酸鈣，消耗鈣與鹼度',
@@ -735,6 +918,26 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Symbiodin',
     nounZh: '蟲黃藻',
     trophicMode: 'symbiont',
+    niche: 'host',
+    kinetics: {
+      muMax: derived(
+        1.94,
+        'physiology_tremblay2013',
+        'gross 101 µg C cm⁻² d⁻¹ ÷ symbiont C 36.7 µg cm⁻² at 25 °C ÷ 1.072^5',
+      ),
+      halfSat: {
+        nitrogen: estimated(
+          0.067,
+          'green-algal value applied to dinoflagellates',
+          'physiology_bowie1985',
+        ),
+        phosphorus: estimated(
+          0.0077,
+          'green-algal value applied to dinoflagellates',
+          'physiology_bowie1985',
+        ),
+      },
+    },
     flags: ['photosynthetic'],
     morphologies: [
       '球形',
@@ -806,6 +1009,29 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Parameci',
     nounZh: '纖毛蟲',
     trophicMode: 'consumer',
+    niche: 'water_column',
+    prey: ['bacteria'],
+    kinetics: {
+      muMax: measured(3.0, 'microbes_aquatic_weisse2024'),
+      halfSat: {
+        prey: derived(
+          6.5,
+          'microbes_aquatic_taylor1977',
+          'geometric mean 1.5 × 10⁷ bacteria/mL × 0.3 pg × 1.42 COD/dry mass',
+        ),
+      },
+      yieldCoefficient: measured(0.5, 'microbes_aquatic_curdsCockburn1968'),
+      lossRate: estimated(
+        0.05,
+        'well-fed basal loss ≈ 2% of µmax; starvation death 0.55–0.66 d⁻¹',
+        'microbes_aquatic_weisse2024',
+      ),
+      starvationLoss: derived(
+        0.66,
+        'microbes_aquatic_weisse2024',
+        'Colpidium kleini −0.43 d⁻¹ at 8 °C + 0.019 °C⁻¹ × 12 °C',
+      ),
+    },
     flags: [],
     morphologies: [
       '拖鞋形',

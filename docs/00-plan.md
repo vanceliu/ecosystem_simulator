@@ -39,6 +39,15 @@
 - ⬜ 攝食通量、化學通量、族群歷史紀錄（[04](04-simulation-model.md) §10）
 - ⬜ CLI 模擬器 `tools/sim-cli.ts` 與 npm script `sim`（`tsx`）：以固定種子輸出文字紀錄，交付審閱
 
+## M3b 參數與物質資料化
+
+- ⬜ 物質表 `ref_substance`（id、單位、元素組成、介質）：水域、陸域、有機池全部以物質 id 識別；`SimulationState` 的池改為「物質 id → 質量」，移除 `saltMg`、`o2`、`co2` 等固定欄位
+- ⬜ 參數表：生物參數、物理與化學常數、遊戲機制常數全部以 id 存放，每列含 `basis`、`source`、`derivation`
+- ⬜ 數值改以 SQL／CSV 種子檔撰寫，移除 `src/content` 內的 TS 常數物件；來源規則測試改為驗證種子檔
+- ⬜ worker 啟動時載入參考表，組成以 id 為鍵的唯讀參數集傳入引擎；引擎維持純函式，不存取資料庫
+- ⬜ 測試以種子檔建立記憶體參數集
+- ⬜ 同步更新 03、04、10、CLAUDE.md
+
 ## M4 文字 UI
 
 - ⬜ Web Worker 承載模擬迴圈、指令佇列、快照推送（[08](08-ui-design.md) §9）

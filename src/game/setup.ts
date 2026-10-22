@@ -202,5 +202,6 @@ export function recommendTankConfig(location: LocationConfig, placement: Placeme
     lid: humidity !== null && humidity >= HUMID_LID_THRESHOLD,
     tide: habitat.tide,
     seasonalDrying: habitat.seasonalDrying,
+    openInflow: false,
   };
 }

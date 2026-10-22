@@ -1,4 +1,5 @@
-import { MICROBES, MICROBIAL_PROCESSES, type MicrobeId } from '../content/microbes';
+import { getArchetype } from '../content/archetypes/index';
+import { MICROBIAL_PROCESSES, type MicrobeId } from '../content/microbes';
 import { LITTER_COMPOSITION, STOICHIOMETRY } from '../content/stoichiometry';
 import {
   HARDSCAPE_SURFACE,
@@ -16,15 +17,16 @@ import {
   type Geometry,
 } from './geometry';
 import { targetHumidity, targetSoilMoisture } from './land';
-import { hashSeed } from './rng';
 import { waterComposition } from './sourceWater';
-import type {
-  BiomassPopulation,
-  ClimateState,
-  OrganicPool,
-  SimulationState,
-  TankConfig,
-} from './types';
+import type { Vector } from '../content/archetype';
+import { createBioContext } from './bioContext';
+import { bodyRatios, populationCod } from './biota';
+import { inoculate, ORIGIN, pickSuitableGenotype, setupRoutes, type Route } from './emergence';
+import { foundBiomass, registerSpecies } from './founding';
+import { toPools } from './pools';
+import { emptyRecords } from './records';
+import { createRng, hashSeed, mix32 } from './rng';
+import type { ClimateState, OrganicPool, SimulationState, TankConfig } from './types';
 
 const MICROBE_ORDER: readonly MicrobeId[] = [
   'heterotroph',
@@ -34,7 +36,10 @@ const MICROBE_ORDER: readonly MicrobeId[] = [
   'soil_bacteria',
   'saprotrophic_fungus',
 ];
-const LAND_MICROBE_COUNT = MICROBE_ORDER.filter((id) => MICROBES[id].zone === 'land').length;
+const isLandMicrobe = (id: MicrobeId): boolean => getArchetype(id).zone === 'T';
+const LAND_MICROBE_COUNT = MICROBE_ORDER.filter(isLandMicrobe).length;
+/** rng stream for setup draws, distinct from per-tick streams */
+const SETUP_STREAM = 0x5e7019;
 const ML_PER_L = 1000;
 const MG_PER_G = 1000;
 const CM2_PER_M2 = 1e4;
@@ -133,7 +138,7 @@ function wildSoilMicrobes(
   geometry: Geometry,
 ): Partial<Record<MicrobeId, number>> {
   if (config.landSubstrate === null || geometry.landAreaM2 <= 0) return {};
-  const capacity = microbialCapacities(geometry, 0).soil;
+  const capacity = microbialCapacities(geometry, 0, config.landSubstrateDepthCm).soil;
   if (config.landSubstrateSource.origin === 'clean') {
     const each =
       (capacity * MICROBIAL_PROCESSES.initialSoilMicrobeFraction.value) / LAND_MICROBE_COUNT;
@@ -170,7 +175,7 @@ function capWaterMicrobes(
   geometry: Geometry,
   volume: number,
 ): Partial<Record<MicrobeId, number>> {
-  const capacities = microbialCapacities(geometry, volume);
+  const capacities = microbialCapacities(geometry, volume, 0);
   const limit = (ids: readonly MicrobeId[], capacity: number): void => {
     const total = ids.reduce((sum, id) => sum + (microbes[id] ?? 0), 0);
     const allowed = capacity * MAX_INITIAL_CAPACITY_SHARE;
@@ -200,7 +205,7 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
 
   const waterMicrobes: Partial<Record<MicrobeId, number>> = {};
   for (const id of MICROBE_ORDER) {
-    if (MICROBES[id].zone !== 'water' || volume <= 0) continue;
+    if (isLandMicrobe(id) || volume <= 0) continue;
     waterMicrobes[id] =
       cellsToCod((water.inoculum[id] ?? 0) * ML_PER_L * volume) + (wild.microbes[id] ?? 0);
   }
@@ -208,20 +213,6 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
     ...capWaterMicrobes(waterMicrobes, geometry, volume),
     ...wildSoilMicrobes(config, geometry),
   };
-
-  const populations: BiomassPopulation[] = [];
-  MICROBE_ORDER.forEach((archetypeId, index) => {
-    const zone = MICROBES[archetypeId].zone;
-    const hasHabitat = zone === 'water' ? volume > 0 : geometry.landAreaM2 > 0;
-    if (!hasHabitat) return;
-    populations.push({
-      id: `pop-${index + 1}`,
-      speciesId: `${archetypeId}:base`,
-      archetypeId,
-      zone,
-      cod: startingCod[archetypeId] ?? 0,
-    });
-  });
 
   const state: SimulationState = {
     schema: 1,
@@ -259,7 +250,10 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       soilPo4: 0,
     },
     climate,
-    populations,
+    species: {},
+    populations: [],
+    nextPopulationId: 1,
+    records: emptyRecords(),
     ledger: { nIn: 0, nOut: 0, pIn: 0, pOut: 0 },
     tracking: {
       cycleStatus: 'no_load',
@@ -271,21 +265,67 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       hypoxiaAlert: false,
       droughtAlert: false,
       dayLengthAbove12: climate.dayLengthH > 12,
+      uvbOffDays: 0,
+      uvbAlert: false,
+      dryAirAlert: false,
+      saturated: false,
+      trophicMilestone: 0,
     },
   };
   state.land.humidity = targetHumidity(state);
   state.land.soilMoisture = geometry.landAreaM2 > 0 ? targetSoilMoisture(state) : 0;
+  const rng = createRng(mix32(state.seedHash, SETUP_STREAM));
+  const context = createBioContext(state, toPools(state), geometry, 0);
+  const routes = setupRoutes(config);
+  for (const archetypeId of MICROBE_ORDER) {
+    const cod = startingCod[archetypeId] ?? 0;
+    if (!(cod > 0)) continue;
+    const archetype = getArchetype(archetypeId);
+    const speciesId = pickSuitableGenotype(context, archetype, rng);
+    if (speciesId === null) continue;
+    const vector = microbeVector(archetype.zone === 'T', routes);
+    registerSpecies(state, { id: speciesId, origin: ORIGIN[vector], introduced: false });
+    foundBiomass(state, speciesId, vector, cod);
+  }
+  inoculate(createBioContext(state, toPools(state), geometry, 0), rng);
+  state.ledger = { nIn: 0, nOut: 0, pIn: 0, pOut: 0 };
+  for (const population of state.populations) population.dayStartCod = populationCod(population);
   return state;
+}
+
+/** Route credited with the starting microbes of water or soil. */
+function microbeVector(onLand: boolean, routes: readonly Route[]): Vector {
+  const wanted: readonly Vector[] = onLand
+    ? ['soil', 'leaf_litter']
+    : [
+        'tap_water',
+        'aged_water',
+        'pond_water',
+        'natural_seawater',
+        'live_rock',
+        'wild_rock',
+        'live_sand',
+        'driftwood',
+      ];
+  return routes.find((route) => wanted.includes(route.vector))?.vector ?? 'background';
 }
 
 export function cloneState(state: SimulationState): SimulationState {
   return JSON.parse(JSON.stringify(state)) as SimulationState;
 }
 
+/** Living N or P held by all populations, mg. */
+function livingElement(state: SimulationState, element: 'n' | 'p'): number {
+  return state.populations.reduce(
+    (sum, population) =>
+      sum + populationCod(population) * bodyRatios(getArchetype(population.archetypeId))[element],
+    0,
+  );
+}
+
 /** Total nitrogen held in the tank, mg. */
 export function totalNitrogen(state: SimulationState): number {
   const w = state.water;
-  const biomass = state.populations.reduce((sum, p) => sum + p.cod, 0);
   return (
     w.tan +
     w.no2 +
@@ -295,14 +335,13 @@ export function totalNitrogen(state: SimulationState): number {
     w.inert.n +
     state.land.litter.n +
     state.land.soilTan +
-    biomass * STOICHIOMETRY.nPerBiomassCod.value
+    livingElement(state, 'n')
   );
 }
 
 /** Total phosphorus held in the tank, mg. */
 export function totalPhosphorus(state: SimulationState): number {
   const w = state.water;
-  const biomass = state.populations.reduce((sum, p) => sum + p.cod, 0);
   return (
     w.po4 +
     w.food.p +
@@ -310,6 +349,6 @@ export function totalPhosphorus(state: SimulationState): number {
     w.inert.p +
     state.land.litter.p +
     state.land.soilPo4 +
-    biomass * STOICHIOMETRY.pPerBiomassCod.value
+    livingElement(state, 'p')
   );
 }

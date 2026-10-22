@@ -150,4 +150,19 @@ export const LAND_SOIL_SOURCES = {
       'Braz. Arch. Biol. Technol.: Subulina octona survives 48 h at 35 °C on humid substrate, dies on dry substrate',
     url: 'https://www.scielo.br/j/babt/a/5djvQRmxDNKP8MjmhWpqW5m/abstract/?lang=en',
   },
+  land_soil_reischke2014: {
+    title:
+      'Reischke, Rousk & Bååth 2014, Effects of glucose loading rates on bacterial and fungal growth in soil (SBB 70:88): exponential community growth ≈ 0.25 h⁻¹',
+    url: 'https://www.lunduniversity.lu.se/lup/publication/cf9221e5-3ee2-4d17-9502-81889d0c9b10',
+  },
+  land_soil_rousk2007: {
+    title:
+      'Rousk & Bååth 2007, Fungal biomass production and turnover in soil (SBB 39:2173): turnover time 130–150 d',
+    url: 'https://lup.lub.lu.se/record/707510',
+  },
+  land_soil_xu2013: {
+    title:
+      'Xu, Thornton & Post 2013, A global analysis of soil microbial biomass C, N and P (GEB 22:737): surface Cmic 56.7 mmol C/kg',
+    url: 'https://data.ornldaac.earthdata.nasa.gov/public/global_soil/Global_Microbial_Biomass_C_N_P/comp/XuXF2013_GEB.pdf',
+  },
 } as const satisfies Record<string, Source>;

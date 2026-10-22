@@ -7,7 +7,9 @@ import type {
   Moisture,
   RealmCode,
 } from '../content/location';
-import type { MicrobeId, MicrobeZone } from '../content/microbes';
+import type { ArchetypeId } from '../content/archetypeIds';
+import type { Vector } from '../content/archetype';
+import type { GenotypeCode, SpeciesRecord } from '../generation/index';
 import type {
   FilterId,
   HardscapeId,
@@ -77,6 +79,8 @@ export interface TankConfig {
   readonly lid: boolean;
   readonly tide: boolean;
   readonly seasonalDrying: boolean;
+  /** connected to a pond or the sea; enables `open_inflow` */
+  readonly openInflow: boolean;
 }
 
 /** Organic matter as COD with its nitrogen and phosphorus, all in mg. */
@@ -142,13 +146,77 @@ export interface ClimateState {
   wetSeason: boolean | null;
 }
 
-export interface BiomassPopulation {
+interface PopulationBase {
   readonly id: string;
-  readonly speciesId: string;
-  readonly archetypeId: MicrobeId;
-  readonly zone: MicrobeZone;
+  readonly speciesId: GenotypeCode;
+  readonly archetypeId: ArchetypeId;
+  /** arrival route (docs/02 §1) */
+  readonly vector: Vector;
+  readonly arrivedTick: number;
+  /** tick the establishment check passed (docs/04 §7); null before */
+  establishedTick: number | null;
+  /** consecutive game days of net growth */
+  growthStreakDays: number;
+  /** total biomass at the start of the current game day, mg COD */
+  dayStartCod: number;
+  /** size at the start of each of the last 3 game days: individuals (cohort) or mg COD */
+  recentDaySize: number[];
+}
+
+/** docs/04 §5.6: microbes, algae, protists, plants, fungi. */
+export interface BiomassPopulation extends PopulationBase {
+  readonly kind: 'biomass';
   /** mg COD */
   cod: number;
+  /** clonal_aging: divisions since the last sexual reproduction */
+  clonalGenerations: number;
+  /** clonal_aging: collapse already reported */
+  collapsed: boolean;
+}
+
+/** docs/04 §5.6: individuals born on the same game day. */
+export interface AgeCohort {
+  readonly birthTick: number;
+  /** individuals; fractional counts are expected values */
+  count: number;
+  /** mg dry mass per individual */
+  meanMassMg: number;
+  /** largest meanMassMg reached; starvation reference */
+  peakMassMg: number;
+  /** eggs and larvae of water-breeding amphibians, aquatic insect stages */
+  aquatic: boolean;
+  /** semelparous parents: tick they bred; all die within 3 game days */
+  spentTick: number | null;
+}
+
+export interface CohortPopulation extends PopulationBase {
+  readonly kind: 'cohort';
+  cohorts: AgeCohort[];
+  /** reproductive reserve held by adults, mg COD */
+  reserveCod: number;
+  lastClutchTick: number | null;
+  /** corals: zooxanthellae density Z, 0–1 (docs/04 §5.5) */
+  symbiontDensity: number | null;
+  /** corals: consecutive game days with Z < 0.2 */
+  lowSymbiontDays: number;
+}
+
+export type Population = BiomassPopulation | CohortPopulation;
+
+/** Ring buffers for docs/04 §10; index = game day modulo length. */
+export interface Records {
+  /** game day the current buckets belong to */
+  day: number;
+  /** `${preyNode}>${predatorSpeciesId}` → 7 daily mg COD */
+  feeding: Record<string, number[]>;
+  /** `${speciesId}|${kind}` → 7 daily mg */
+  chemistry: Record<string, number[]>;
+  /** speciesId → 30 daily means (cohort: individuals; biomass: mg COD) */
+  history: Record<string, number[]>;
+  /** speciesId → current-day running sum and sample count for the history mean */
+  historyAccumulator: Record<string, [number, number]>;
+  /** speciesId → trophic level (docs/04 §6) */
+  trophicLevels: Record<string, number>;
 }
 
 /** Cumulative element exchange with the outside, mg. */
@@ -173,6 +241,14 @@ export interface Tracking {
   hypoxiaAlert: boolean;
   droughtAlert: boolean;
   dayLengthAbove12: boolean;
+  /** consecutive game days with reptiles present and UVB off */
+  uvbOffDays: number;
+  uvbAlert: boolean;
+  dryAirAlert: boolean;
+  /** docs/04 §9.2: emergence paused at the population limit */
+  saturated: boolean;
+  /** highest trophic-level milestone reported (docs/06 §4) */
+  trophicMilestone: number;
 }
 
 export interface SimulationState {
@@ -184,12 +260,25 @@ export interface SimulationState {
   water: WaterState;
   land: LandState;
   climate: ClimateState;
-  populations: BiomassPopulation[];
+  /** every species that has lived in this tank, including extinct ones */
+  species: Record<GenotypeCode, SpeciesRecord>;
+  populations: Population[];
+  nextPopulationId: number;
+  records: Records;
   ledger: Ledger;
   tracking: Tracking;
 }
 
-export type Command = { readonly type: 'feed'; readonly dryMassMg: number };
+export type Command =
+  | { readonly type: 'feed'; readonly dryMassMg: number }
+  | {
+      readonly type: 'release';
+      readonly archetypeId: ArchetypeId;
+      /** codex species; omitted = new species drawn from base weights */
+      readonly speciesId?: GenotypeCode;
+      /** adults released; default and upper bound per docs/06 §2 */
+      readonly count?: number;
+    };
 
 export type SimEventType =
   | 'cycle_started'
@@ -202,7 +291,25 @@ export type SimEventType =
   | 'drought'
   | 'wet_season_start'
   | 'dry_season_start'
-  | 'equinox';
+  | 'equinox'
+  | 'species_established'
+  | 'species_extinct'
+  | 'mutant_established'
+  | 'legendary_established'
+  | 'invader_established'
+  | 'feeder_established'
+  | 'algae_bloom'
+  | 'bacterial_bloom'
+  | 'population_boom'
+  | 'coral_bleaching'
+  | 'emergence_exit'
+  | 'metamorphosis'
+  | 'trophic_milestone'
+  | 'clonal_collapse'
+  | 'ecosystem_saturated'
+  | 'dry_air'
+  | 'uvb_missing'
+  | 'release_rejected';
 
 export type SimEventLevel = 'info' | 'notice' | 'major';
 
@@ -210,6 +317,9 @@ export interface SimEvent {
   readonly tick: number;
   readonly type: SimEventType;
   readonly level: SimEventLevel;
+  readonly speciesId?: GenotypeCode;
+  /** trophic milestone level, or rejection reason code */
+  readonly detail?: string;
 }
 
 export interface StepResult {

@@ -59,6 +59,8 @@ export const TEST_BIOMASS: Archetype = {
   metabolicClass: 'alga',
   salinityClasses: ['F', 'B', 'M'],
   vectors: ['background'],
+  niche: 'surface',
+  kinetics: { muMax: e(1), halfSat: { nitrogen: e(0.02), phosphorus: e(0.003) } },
   latinStem: 'Navicul',
   nounZh: '矽藻',
   flags: ['photosynthetic'],

@@ -1,5 +1,7 @@
+import { getArchetype } from '../content/archetypes/index';
 import { STOICHIOMETRY } from '../content/stoichiometry';
 import { RAIN_CHEMISTRY } from '../content/waterSources';
+import { bodyRatios } from './biota';
 import { requireClimate, equivalentMonth } from './climate';
 import { computeGeometry } from './geometry';
 import { waterComposition } from './sourceWater';
@@ -26,7 +28,7 @@ const DISSOLVED_KEYS = [
   'substrateCod',
 ] as const;
 
-/** Removes a fraction of the water with its dissolved load and free-living microbes. */
+/** Removes a fraction of the water with its dissolved load and water-column biomass. */
 export function removeWaterFraction(state: SimulationState, fraction: number): void {
   const water = state.water;
   const share = Math.min(1, Math.max(0, fraction));
@@ -37,11 +39,14 @@ export function removeWaterFraction(state: SimulationState, fraction: number): v
   let microbeN = 0;
   let microbeP = 0;
   for (const population of state.populations) {
-    if (population.archetypeId !== 'heterotroph') continue;
+    if (population.kind !== 'biomass') continue;
+    const archetype = getArchetype(population.archetypeId);
+    if (archetype.kind !== 'biomass' || archetype.niche !== 'water_column') continue;
     const removed = population.cod * share;
+    const ratios = bodyRatios(archetype);
     population.cod -= removed;
-    microbeN += removed * STOICHIOMETRY.nPerBiomassCod.value;
-    microbeP += removed * STOICHIOMETRY.pPerBiomassCod.value;
+    microbeN += removed * ratios.n;
+    microbeP += removed * ratios.p;
   }
   water.volumeL -= water.volumeL * share;
   state.ledger.nOut += exportedN + microbeN;

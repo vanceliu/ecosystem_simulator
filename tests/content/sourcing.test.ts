@@ -3,6 +3,7 @@ import { ARCHETYPE_IDS } from '../../src/content/archetypeIds';
 import * as climate from '../../src/content/climate';
 import { HABITATS, HABITAT_IDS } from '../../src/content/habitats';
 import * as microbes from '../../src/content/microbes';
+import * as physiology from '../../src/content/physiology';
 import { NATIVE_RANGES } from '../../src/content/realms';
 import { isSourced, type Sourced } from '../../src/content/sourced';
 import { SOURCES } from '../../src/content/sources';
@@ -19,7 +20,7 @@ function collectSourced(value: unknown, path: string, found: [string, Sourced][]
   for (const [key, child] of Object.entries(value)) collectSourced(child, `${path}.${key}`, found);
 }
 
-const MODULES = { climate, microbes, stoichiometry, tankOptions, waterSources };
+const MODULES = { climate, microbes, physiology, stoichiometry, tankOptions, waterSources };
 const sourcedValues: [string, Sourced][] = [];
 for (const [name, module] of Object.entries(MODULES)) collectSourced(module, name, sourcedValues);
 

@@ -7,6 +7,7 @@ import { AMPHIBIANS_SEMI_SOURCES } from './archetypes/sources/amphibians_semi';
 import { REPTILES_SMALL_FISH_SOURCES } from './archetypes/sources/reptiles_small_fish';
 import { LARGE_FRESHWATER_SOURCES } from './archetypes/sources/large_freshwater';
 import { LARGE_MARINE_SOURCES } from './archetypes/sources/large_marine';
+import { PHYSIOLOGY_SOURCES } from './physiologySources';
 
 export interface Source {
   readonly title: string;
@@ -16,7 +17,7 @@ export interface Source {
 const CORE_SOURCES = {
   asm1: {
     title:
-      'Henze et al. 1987, Activated Sludge Model No. 1, default parameters at 20 °C (WaterTAP)',
+      'ASM1 (Henze et al. 1987) default parameter set as used in BSM1, valid at ≈ 15 °C (WaterTAP property package)',
     url: 'https://watertap.readthedocs.io/en/stable/technical_reference/property_models/ASM1.html',
   },
   nitrospiraKinetics: {
@@ -32,6 +33,11 @@ const CORE_SOURCES = {
     title:
       'Proc. Florida State Hort. Soc. 117 (2004): perlite biofilter nitrification fastest at pH 8.5',
     url: 'https://journals.flvc.org/fshs/article/view/85855',
+  },
+  bsm1: {
+    title:
+      'Alex et al. 2008, Benchmark Simulation Model no. 1 (BSM1), LTH-IEA-7229: ASM1 parameters correspond to ≈ 15 °C',
+    url: 'https://www2.iea.lth.se/publications/Reports/LTH-IEA-7229.pdf',
   },
   hovanecPatent: {
     title:
@@ -209,6 +215,7 @@ export const SOURCES = {
   ...REPTILES_SMALL_FISH_SOURCES,
   ...LARGE_FRESHWATER_SOURCES,
   ...LARGE_MARINE_SOURCES,
+  ...PHYSIOLOGY_SOURCES,
 } as const satisfies Record<string, Source>;
 
 export type SourceId = keyof typeof SOURCES;
@@ -224,4 +231,5 @@ export const SOURCE_GROUPS: readonly Readonly<Record<string, Source>>[] = [
   REPTILES_SMALL_FISH_SOURCES,
   LARGE_FRESHWATER_SOURCES,
   LARGE_MARINE_SOURCES,
+  PHYSIOLOGY_SOURCES,
 ];

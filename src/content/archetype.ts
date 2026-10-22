@@ -1,4 +1,5 @@
 import type { ArchetypeId } from './archetypeIds';
+import type { BodyComposition } from './physiology';
 import type { Sourced } from './sourced';
 
 export type Layer = 'L1-D' | 'L1-P' | 'L2' | 'L3' | 'L3-P' | 'L4' | 'L5' | 'L6';
@@ -262,6 +263,8 @@ interface ArchetypeDataBase {
     readonly unit: DensityUnit;
   };
   readonly minEnclosure?: MinEnclosure;
+  /** overrides the metabolic-class body composition */
+  readonly bodyComposition?: BodyComposition;
 }
 
 export interface CohortData extends ArchetypeDataBase {
@@ -281,9 +284,49 @@ export interface CohortData extends ArchetypeDataBase {
   readonly habitats: readonly [readonly Habitat[], readonly Habitat[]];
 }
 
+/** Where a biomass population lives; sets its capacity and the pools it exchanges with. */
+export type BiomassNiche =
+  'water_column' | 'surface' | 'sediment' | 'water_floor' | 'land' | 'soil' | 'host';
+
+/** Growth kinetics at 20 °C (docs/04 §5.2–5.3). */
+export interface BiomassKinetics {
+  /** d⁻¹ */
+  readonly muMax: Sourced;
+  readonly halfSat: {
+    /** mg/L of the growth substrate: COD (decomposers), N (nitrifiers) */
+    readonly substrate?: Sourced;
+    /** mg O2/L */
+    readonly o2?: Sourced;
+    /** mg N/L of TAN + NO3 */
+    readonly nitrogen?: Sourced;
+    /** mg P/L */
+    readonly phosphorus?: Sourced;
+    /** mg SiO2/L */
+    readonly silicate?: Sourced;
+    /** mg CO2/L */
+    readonly co2?: Sourced;
+    /** mg COD/L of prey biomass (biomass-type consumers) */
+    readonly prey?: Sourced;
+  };
+  /** g biomass COD per g substrate (COD or N) or per g prey COD */
+  readonly yieldCoefficient?: Sourced;
+  /** d⁻¹; basal loss of groups whose lifespan is a division interval (clonal_aging) */
+  readonly lossRate?: Sourced;
+  /** d⁻¹; extra loss of biomass-type consumers without food, scaled by unmet intake */
+  readonly starvationLoss?: Sourced;
+  /** d⁻¹ as a fraction of muMax; photoautotroph respiration in darkness */
+  readonly darkRespiration?: Sourced;
+  /** microbes: full rate between min and max, linear to zero at tolerance.ph */
+  readonly phOptimum?: SourcedRange;
+}
+
 export interface BiomassData extends ArchetypeDataBase {
   readonly kind: 'biomass';
   readonly trophicMode: TrophicMode;
+  readonly niche: BiomassNiche;
+  readonly kinetics: BiomassKinetics;
+  /** biomass-type consumers: food kinds grazed */
+  readonly prey?: readonly FoodKind[];
   /** eight alternatives for the morphology locus, Chinese labels */
   readonly morphologies: readonly [string, string, string, string, string, string, string, string];
   /** what the 'specialised' metabolism allele means for this group */

@@ -25,10 +25,32 @@ const LEVEL: Readonly<Record<SimEventType, SimEventLevel>> = {
   wet_season_start: 'info',
   dry_season_start: 'info',
   equinox: 'info',
+  species_established: 'info',
+  species_extinct: 'notice',
+  mutant_established: 'notice',
+  legendary_established: 'major',
+  invader_established: 'notice',
+  feeder_established: 'info',
+  algae_bloom: 'notice',
+  bacterial_bloom: 'notice',
+  population_boom: 'notice',
+  coral_bleaching: 'major',
+  emergence_exit: 'info',
+  metamorphosis: 'info',
+  trophic_milestone: 'major',
+  clonal_collapse: 'notice',
+  ecosystem_saturated: 'major',
+  dry_air: 'notice',
+  uvb_missing: 'notice',
+  release_rejected: 'info',
 };
 
-export function makeEvent(type: SimEventType, tick: number): SimEvent {
-  return { tick, type, level: LEVEL[type] };
+export function makeEvent(
+  type: SimEventType,
+  tick: number,
+  extra: { readonly speciesId?: string; readonly detail?: string } = {},
+): SimEvent {
+  return { tick, type, level: LEVEL[type], ...extra };
 }
 
 /** docs/06 §4: evaluated at the first tick of each day for the day that just ended. */

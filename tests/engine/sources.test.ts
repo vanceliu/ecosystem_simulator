@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { WILD_LITTER_STOCK } from '../../src/content/tankOptions';
-import { computeGeometry, createInitialState, khDkh, salinityPpt } from '../../src/engine/index';
+import {
+  computeGeometry,
+  createInitialState,
+  khDkh,
+  populationCod,
+  salinityPpt,
+} from '../../src/engine/index';
 import { waterComposition } from '../../src/engine/sourceWater';
 import type { TankConfig } from '../../src/engine/types';
 import { CYCLING_TANK, tank } from './fixtures';
@@ -89,6 +95,6 @@ describe('wild land materials (docs/11 §6)', () => {
     const expectedDryMg = WILD_LITTER_STOCK.tropical.value * landAreaM2 * 1000;
     expect(state.land.litter.cod).toBeCloseTo(expectedDryMg * 1.2, 3);
     const soil = state.populations.find((population) => population.archetypeId === 'soil_bacteria');
-    expect(soil?.cod ?? 0).toBeGreaterThan(0);
+    expect(soil === undefined ? 0 : populationCod(soil)).toBeGreaterThan(0);
   });
 });

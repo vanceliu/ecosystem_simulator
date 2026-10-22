@@ -37,3 +37,18 @@ export const LITTER_COMPOSITION = {
   nPerDryMass: estimated(0.015, 'senesced leaf litter'),
   pPerDryMass: estimated(0.001, 'senesced leaf litter'),
 } as const;
+
+/** Converts area-based docs/09 densities to biomass. */
+export const CAPACITY_CONVERSION = {
+  /** g dry mass per g chlorophyll a */
+  dryMassPerChlorophyll: estimated(100, 'C:Chl a ≈ 50 g/g with carbon ≈ 50% of dry mass'),
+  /** g dry mass per m² at 100% cover (moss mats, macroalgae beds) */
+  fullCoverDryGPerM2: estimated(300, 'dense moss mat or macroalgal bed'),
+} as const;
+
+export const PRODUCTION = {
+  /** mg SiO2 deposited per mg diatom COD formed */
+  silicaPerDiatomCod: estimated(0.14, 'docs/04 §5.3 0.2 g SiO2 per g dry mass ÷ 1.42 COD/dry mass'),
+  /** pore volume fraction of terrarium substrate */
+  soilPorosity: estimated(0.5, 'loose organic substrate'),
+} as const;

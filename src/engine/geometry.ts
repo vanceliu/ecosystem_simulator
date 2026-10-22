@@ -3,6 +3,7 @@ import {
   FILTERS,
   HARDSCAPE_SURFACE,
   SUBSTRATES,
+  WILD_MATERIALS,
   WILD_SUBSTRATE_ANOXIC_BONUS,
 } from '../content/tankOptions';
 import type { TankConfig } from './types';
@@ -71,7 +72,13 @@ export function computeGeometry(config: TankConfig): Geometry {
 }
 
 /** mg COD each habitat can hold; docs/04 §5.2. */
-export function microbialCapacities(geometry: Geometry, waterVolumeL: number) {
+export function microbialCapacities(
+  geometry: Geometry,
+  waterVolumeL: number,
+  landSubstrateDepthCm: number,
+) {
+  const soilGrams =
+    geometry.landAreaM2 * 1e4 * landSubstrateDepthCm * WILD_MATERIALS.soilBulkDensity.value;
   return {
     attached: MICROBIAL_PROCESSES.biofilmCapacityPerM2.value * geometry.surfaceAreaM2,
     substrate:
@@ -79,6 +86,6 @@ export function microbialCapacities(geometry: Geometry, waterVolumeL: number) {
       geometry.substrateSurfaceM2 *
       geometry.anoxicFraction,
     free: MICROBIAL_PROCESSES.freeBacteriaCapacity.value * waterVolumeL,
-    soil: MICROBIAL_PROCESSES.soilMicrobeCapacityPerM2.value * geometry.landAreaM2,
+    soil: MICROBIAL_PROCESSES.soilMicrobeCodPerG.value * soilGrams,
   };
 }

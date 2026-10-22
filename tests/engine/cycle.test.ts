@@ -4,16 +4,24 @@ import { CYCLING_TANK, DAILY_FEED_MG, FEED_HOUR } from './fixtures';
 import { peakDay, runDays } from './simulation';
 
 const DAYS = 70;
+/** docs/06 §6 judges cycle timing by the median over seeds */
+const TIMING_SEEDS = ['cycle-seed', 'a', 'b', 'c', 'd'];
 const result = runDays(CYCLING_TANK, 'cycle-seed', DAYS, DAILY_FEED_MG, FEED_HOUR);
 
+function completionDay(seed: string): number {
+  const run =
+    seed === 'cycle-seed' ? result : runDays(CYCLING_TANK, seed, DAYS, DAILY_FEED_MG, FEED_HOUR);
+  const complete = run.events.find((event) => event.type === 'cycle_complete');
+  return complete === undefined ? Infinity : complete.tick / 24;
+}
+
 describe('fishless cycle (docs/06 §4, docs/00 M1)', () => {
-  it('completes the nitrogen cycle within 4–8 game weeks', () => {
-    const complete = result.events.find((event) => event.type === 'cycle_complete');
-    expect(complete).toBeDefined();
-    const day = (complete?.tick ?? 0) / 24;
-    expect(day).toBeGreaterThanOrEqual(28);
-    expect(day).toBeLessThanOrEqual(56);
-  });
+  it('completes the nitrogen cycle within 4–8 game weeks (median over seeds)', () => {
+    const days = TIMING_SEEDS.map(completionDay).sort((a, b) => a - b);
+    const median = days[Math.floor(days.length / 2)] ?? Infinity;
+    expect(median).toBeGreaterThanOrEqual(28);
+    expect(median).toBeLessThanOrEqual(56);
+  }, 60_000);
 
   it('peaks ammonia before nitrite', () => {
     expect(peakDay(result.daily, 'tanMgL')).toBeLessThan(peakDay(result.daily, 'no2MgL'));

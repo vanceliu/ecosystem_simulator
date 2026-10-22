@@ -129,4 +129,50 @@ export const AMPHIBIANS_SEMI_SOURCES = {
       'Mudskipper ammonia tolerance: 96-h NH3 LC50 536 µM (Periophthalmodon schlosseri), 60.2 µM (Boleophthalmus boddaerti)',
     url: 'https://www.doi.org/10.1023/A:1007745003948',
   },
+  amphibians_semi_adwTinctorius: {
+    title: 'Animal Diversity Web, Dendrobates tinctorius: tadpoles metamorphose after 10–12 weeks',
+    url: 'https://animaldiversity.org/accounts/Dendrobates_tinctorius/',
+  },
+  amphibians_semi_adwAuratus: {
+    title:
+      'Animal Diversity Web, Dendrobates auratus: tadpoles develop for an additional six weeks',
+    url: 'https://animaldiversity.org/accounts/Dendrobates_auratus/',
+  },
+  amphibians_semi_wcsFrogBlog: {
+    title:
+      'WCS Frog Blog, Becoming a frog: red-eyed tree frog tadpoles take three weeks to a few months',
+    url: 'https://blog.wcs.org/photo/?p=1506',
+  },
+  amphibians_semi_adwBombina: {
+    title: 'Animal Diversity Web, Bombina orientalis: metamorphosis begins after 10–14 weeks',
+    url: 'https://animaldiversity.org/accounts/Bombina_orientalis/',
+  },
+  amphibians_semi_pipidaeHymenochirus: {
+    title: 'pipidae.org, African dwarf clawed frogs: metamorphosis in 26–36 days',
+    url: 'https://www.pipidae.org/?p=1283',
+  },
+  amphibians_semi_kossXenopus: {
+    title:
+      'Koss & Wakeford, Rearing Xenopus laevis life history stages (ABLE vol. 22): metamorphic competence ≈ 4 weeks at 20 °C; 2–3 months in the literature',
+    url: 'https://www.ableweb.org/biologylabs/wp-content/uploads/volumes/vol-22/mini.4.koss.pdf',
+  },
+  amphibians_semi_fabrezi2020: {
+    title:
+      'Fabrezi & Cruz 2020, Diet and gut morphology in ceratophryid tadpoles (BMC Dev. Biol.): Ceratophrys cranwelli larval development takes 3 weeks',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7388516',
+  },
+  amphibians_semi_gisdBullfrog: {
+    title:
+      'IUCN GISD, Lithobates catesbeianus: larval period from a few months (south) to three years (north)',
+    url: 'https://www.iucngisd.org/gisd/pdf.php?sc=80',
+  },
+  amphibians_semi_caudataCynopsLarva: {
+    title:
+      'Caudata.org, C. cyanurus / C. orientalis differences (quoting Yang & Shen 1993, Zool. Res. 14:215): larvae metamorphose 50–80 d after hatching',
+    url: 'https://www.caudata.org/threads/c-cyanurus-c-orientalis-differences.7652/post-56007',
+  },
+  amphibians_semi_adwNotophthalmus: {
+    title: 'Animal Diversity Web, Notophthalmus viridescens: larval stage lasts 2–5 months',
+    url: 'https://animaldiversity.org/accounts/Notophthalmus_viridescens',
+  },
 } as const satisfies Record<string, Source>;

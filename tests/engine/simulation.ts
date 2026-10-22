@@ -1,4 +1,4 @@
-import { createInitialState, step } from '../../src/engine/index';
+import { createInitialState, populationCod, step } from '../../src/engine/index';
 import type { SimEvent, SimulationState, TankConfig } from '../../src/engine/types';
 
 export interface DailySample {
@@ -57,8 +57,9 @@ export function runDays(
       }
       volumeMinimum = Math.min(volumeMinimum, state.water.volumeL);
       for (const population of state.populations) {
-        poolMinimum = Math.min(poolMinimum, population.cod);
-        if (!Number.isFinite(population.cod)) finite = false;
+        const cod = populationCod(population);
+        poolMinimum = Math.min(poolMinimum, cod);
+        if (!Number.isFinite(cod)) finite = false;
       }
       if (
         ![state.water.temperatureC, state.land.humidity, state.land.soilMoisture].every(

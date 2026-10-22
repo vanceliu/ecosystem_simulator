@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "sim": "tsx tools/sim-cli.ts"
   },
   "dependencies": {
     "@preact/signals": "2.11.3",

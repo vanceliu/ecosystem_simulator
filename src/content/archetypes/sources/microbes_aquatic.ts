@@ -197,4 +197,39 @@ export const MICROBES_AQUATIC_SOURCES = {
     title: 'BioNumbers 114555: freshwater ciliates in warm summers up to 2,500 cells/mL',
     url: 'https://bionumbers.hms.harvard.edu/bionumber.aspx?id=114555',
   },
+  microbes_aquatic_nufebHet: {
+    title:
+      'NUFEB documentation, fix nufeb/growth/het: biofilm heterotroph Ks 4 mg COD/L, µmax 6.9 × 10⁻⁵ s⁻¹',
+    url: 'https://nufeb.readthedocs.io/en/master/fix_growth_het.html',
+  },
+  microbes_aquatic_henze1987Table: {
+    title:
+      'PUC-Rio thesis ch. 4, Tabela 6: ASM1 parameters at 20 °C (Henze 1987): µH 6.0 d⁻¹, KS 20 mg COD/L',
+    url: 'https://www.maxwell.vrac.puc-rio.br/15510/15510_5.PDF',
+  },
+  microbes_aquatic_trinci1969: {
+    title:
+      'Trinci 1969, A kinetic study of the growth of Aspergillus nidulans and other fungi (J. Gen. Microbiol. 57:11): submerged µ 0.090 h⁻¹ at 20 °C',
+    url: 'https://davidmoore.org.uk/cyberweb/images_2016/Manuscripts/Trinci-1969-j-gen-mic-57-11.pdf',
+  },
+  microbes_aquatic_weisse2024: {
+    title:
+      'Weisse et al. 2024, Numerical and thermal response of the bacterivorous ciliate Colpidium kleini: Colpidium striatum µ ≈ 3.0 d⁻¹ at 20 °C',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC11219425/',
+  },
+  microbes_aquatic_taylor1977: {
+    title:
+      'Taylor 1977, Growth responses of ciliate protozoa to the abundance of their bacterial prey (Microb. Ecol. 4:207): half-saturation 5.5–42.9 × 10⁶ bacteria/mL',
+    url: 'https://link.springer.com/article/10.1007/BF02015077',
+  },
+  microbes_aquatic_curdsCockburn1968: {
+    title:
+      'Curds & Cockburn 1968, Tetrahymena pyriformis growing on Klebsiella (J. Gen. Microbiol. 54:343): yield 50% dry/dry',
+    url: 'https://www.nies.go.jp/chiiki1/protoz/refere/id999/985.htm',
+  },
+  microbes_aquatic_brussaard1998: {
+    title:
+      'Brussaard & Riegman 1998, Influence of bacteria on phytoplankton cell mortality (AME 14:271): diatom death 0.01 d⁻¹ at 13 °C in nutrient-limited chemostats',
+    url: 'https://int-res.com/articles/ame/14/a014p271.pdf',
+  },
 } as const satisfies Record<string, Source>;

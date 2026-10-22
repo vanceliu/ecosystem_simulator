@@ -1,4 +1,9 @@
-import { FOOD_COMPOSITION, STOICHIOMETRY } from '../content/stoichiometry';
+import { getArchetype } from '../content/archetypes/index';
+import { BACKGROUND_SEEDING, type MicrobeId } from '../content/microbes';
+import { FOOD_COMPOSITION } from '../content/stoichiometry';
+import { createBioContext, type BioContext } from './bioContext';
+import { bodyRatios, populationCod } from './biota';
+import type { Space } from './capacity';
 import {
   dailyClimate,
   dayOfYearAt,
@@ -6,34 +11,30 @@ import {
   hourlyAmbientTemperature,
   naturalPpfd,
 } from './climate';
-import {
-  exchangeGases,
-  lampPpfd,
-  o2SaturationMgL,
-  updateWaterTemperature,
-  waterPh,
-} from './environment';
-import { dayEndEvents, hourlyEvents, seasonEvents } from './events';
-import { applyProcesses, type Pools } from './fluxes';
-import { computeGeometry, microbialCapacities } from './geometry';
+import { feedingProcesses, foodNodes, predatorsOf, respirationProcesses } from './consumers';
+import { advanceClonalGenerations, dailyBiology } from './daily';
+import { applyCohortFluxes, removeExtinct, updateCohorts } from './demography';
+import { arrivals, release, SATURATION_LIMIT, SATURATION_RESUME } from './emergence';
+import { exchangeGases, lampPpfd, updateWaterTemperature } from './environment';
+import { dayEndEvents, hourlyEvents, makeEvent, seasonEvents } from './events';
+import { applyProcesses } from './fluxes';
+import { computeGeometry, type Geometry } from './geometry';
 import { addRainToLand, updateHydrology } from './hydrology';
 import { applyRunoff, updateLandClimate } from './land';
 import {
-  LAND_LITTER,
-  POOL,
-  WATER_DETRITUS,
-  WATER_FOOD,
-  WATER_INERT,
   landMicrobeProcesses,
   leachingProcesses,
-  populationKey,
   seedingCod,
   waterMicrobeProcesses,
 } from './microbes';
-import { rngForTick } from './rng';
-import { ambientDayMean, cloneState } from './state';
-import type { Command, OrganicPool, SimEvent, SimulationState, StepResult } from './types';
-import { MICROBES } from '../content/microbes';
+import { mortalityProcesses } from './mortality';
+import { fromPools, populationKey, toPools } from './pools';
+import { producerProcesses } from './producers';
+import { recordFluxes, rollRecords, sampleHistory } from './records';
+import { mix32, rngForTick, type Rng } from './rng';
+import { cloneState } from './state';
+import { symbiosisProcesses, updateSymbionts } from './symbiosis';
+import type { BiomassPopulation, Command, SimEvent, SimulationState, StepResult } from './types';
 
 /** docs/04 §9: split a tick when any tracked pool changes by more than this fraction. */
 export const MAX_RELATIVE_CHANGE = 0.5;
@@ -43,8 +44,29 @@ const SUBSTEP_MASS_FLOOR_MG = 1e-3;
 /** docs/11 §7: light through ice; snow-covered ice */
 const ICE_LIGHT_FACTOR = 0.5;
 const SNOW_LIGHT_FACTOR = 0.05;
+/** rng stream for biological draws, distinct from the climate stream */
+const BIOLOGY_STREAM = 0x62696f;
 
-function applyCommands(state: SimulationState, commands: readonly Command[]): void {
+function spaceOf(state: SimulationState, geometry: Geometry): Space {
+  return {
+    geometry,
+    waterVolumeL: state.water.volumeL,
+    landSubstrateDepthCm:
+      state.config.landSubstrate === null ? 0 : state.config.landSubstrateDepthCm,
+  };
+}
+
+function tickContext(state: SimulationState, geometry: Geometry, dtDays: number): BioContext {
+  return createBioContext(state, toPools(state), geometry, dtDays);
+}
+
+function applyCommands(
+  state: SimulationState,
+  commands: readonly Command[],
+  geometry: Geometry,
+  rng: Rng,
+): SimEvent[] {
+  const events: SimEvent[] = [];
   for (const command of commands) {
     switch (command.type) {
       case 'feed': {
@@ -59,12 +81,23 @@ function applyCommands(state: SimulationState, commands: readonly Command[]): vo
         state.ledger.pIn += p;
         break;
       }
+      case 'release': {
+        const event = release(tickContext(state, geometry, 0), command, rng);
+        if (event !== null) events.push(event);
+        break;
+      }
     }
   }
+  return events;
 }
 
-function startDay(state: SimulationState): SimEvent[] {
+/** Closes the previous game day (from tick 24 on) and opens the next one. */
+function startDay(state: SimulationState, geometry: Geometry, rng: Rng): SimEvent[] {
   const events = dayEndEvents(state);
+  if (state.tick > 0) {
+    rollRecords(state);
+    events.push(...dailyBiology(state, spaceOf(state, geometry), rng, state.tracking.saturated));
+  }
   const previousWet = state.climate.wetSeason;
   const dayOfYear = dayOfYearAt(state.config.startDayOfYear, state.tick);
   const daily = dailyClimate(state.config.location, dayOfYear);
@@ -74,12 +107,18 @@ function startDay(state: SimulationState): SimEvent[] {
   state.climate.sunshine = daily.sunshine;
   state.climate.wetSeason = daily.wetSeason;
   state.climate.ambientHumidity = daily.humidity;
-  state.climate.ambientDayMeanC = ambientDayMean(state.config, dayOfYear);
+  state.climate.ambientDayMeanC = ambientDayMeanOf(state, dayOfYear);
   state.climate.rainTodayMm = outdoor
     ? drawRainfall(daily, rngForTick(state.seedHash, state.tick))
     : 0;
   state.climate.evaporationTodayMm = outdoor ? daily.evaporationMmPerDay : 0;
   return [...events, ...seasonEvents(state, previousWet)];
+}
+
+function ambientDayMeanOf(state: SimulationState, dayOfYear: number): number {
+  return state.config.placement === 'outdoor'
+    ? dailyClimate(state.config.location, dayOfYear).meanTemperatureC
+    : state.config.roomTemperatureC;
 }
 
 function updateHourlyClimate(state: SimulationState, hour: number): void {
@@ -100,89 +139,29 @@ function updateHourlyClimate(state: SimulationState, hour: number): void {
   }
 }
 
-function organicToPools(
-  pools: Pools,
-  keys: { cod: string; n: string; p: string },
-  pool: OrganicPool,
-): void {
-  pools.set(keys.cod, pool.cod);
-  pools.set(keys.n, pool.n);
-  pools.set(keys.p, pool.p);
-}
-
-function poolsToOrganic(
-  pools: Pools,
-  keys: { cod: string; n: string; p: string },
-  pool: OrganicPool,
-): void {
-  pool.cod = pools.get(keys.cod) ?? 0;
-  pool.n = pools.get(keys.n) ?? 0;
-  pool.p = pools.get(keys.p) ?? 0;
-}
-
-function toPools(state: SimulationState): Pools {
-  const water = state.water;
-  const pools: Pools = new Map([
-    [POOL.o2, water.o2],
-    [POOL.co2, water.co2],
-    [POOL.tan, water.tan],
-    [POOL.no2, water.no2],
-    [POOL.no3, water.no3],
-    [POOL.po4, water.po4],
-    [POOL.alkalinity, water.alkalinityMg],
-    [POOL.substrate, water.substrateCod],
-    [POOL.n2Out, 0],
-    [POOL.nitrified, 0],
-    [POOL.soilTan, state.land.soilTan],
-    [POOL.soilPo4, state.land.soilPo4],
-    [POOL.soilSubstrate, state.land.soilSubstrateCod],
-  ]);
-  organicToPools(pools, WATER_FOOD, water.food);
-  organicToPools(pools, WATER_DETRITUS, water.detritus);
-  organicToPools(pools, WATER_INERT, water.inert);
-  organicToPools(pools, LAND_LITTER, state.land.litter);
-  for (const population of state.populations)
-    pools.set(populationKey(population.id), population.cod);
-  return pools;
-}
-
-function fromPools(state: SimulationState, pools: Pools): void {
-  const water = state.water;
-  water.o2 = pools.get(POOL.o2) ?? 0;
-  water.co2 = pools.get(POOL.co2) ?? 0;
-  water.tan = pools.get(POOL.tan) ?? 0;
-  water.no2 = pools.get(POOL.no2) ?? 0;
-  water.no3 = pools.get(POOL.no3) ?? 0;
-  water.po4 = pools.get(POOL.po4) ?? 0;
-  water.alkalinityMg = pools.get(POOL.alkalinity) ?? 0;
-  water.substrateCod = pools.get(POOL.substrate) ?? 0;
-  state.land.soilTan = pools.get(POOL.soilTan) ?? 0;
-  state.land.soilPo4 = pools.get(POOL.soilPo4) ?? 0;
-  poolsToOrganic(pools, WATER_FOOD, water.food);
-  poolsToOrganic(pools, WATER_DETRITUS, water.detritus);
-  poolsToOrganic(pools, WATER_INERT, water.inert);
-  poolsToOrganic(pools, LAND_LITTER, state.land.litter);
-  for (const population of state.populations) {
-    population.cod = pools.get(populationKey(population.id)) ?? 0;
-  }
-  state.land.soilSubstrateCod = pools.get(POOL.soilSubstrate) ?? 0;
-  state.ledger.nOut += pools.get(POOL.n2Out) ?? 0;
-  state.tracking.nitrifiedN += pools.get(POOL.nitrified) ?? 0;
-}
-
+/** docs/04 §5.2 background seeding of microbes already living in the tank. */
 function seedMicrobes(state: SimulationState, dtDays: number, landAreaM2: number): void {
-  for (const population of state.populations) {
-    const zone = MICROBES[population.archetypeId].zone;
-    const units = zone === 'water' ? state.water.volumeL : landAreaM2;
+  for (const id of Object.keys(BACKGROUND_SEEDING) as MicrobeId[]) {
+    const archetype = getArchetype(id);
+    const units = archetype.zone === 'T' ? landAreaM2 : state.water.volumeL;
     if (units <= 0) continue;
-    const added = seedingCod(population.archetypeId, units, dtDays);
-    population.cod += added;
-    state.ledger.nIn += added * STOICHIOMETRY.nPerBiomassCod.value;
-    state.ledger.pIn += added * STOICHIOMETRY.pPerBiomassCod.value;
+    const targets = state.populations.filter(
+      (population): population is BiomassPopulation =>
+        population.kind === 'biomass' && population.archetypeId === id,
+    );
+    if (targets.length === 0) continue;
+    const added = seedingCod(id, units, dtDays);
+    const total = targets.reduce((sum, population) => sum + population.cod, 0);
+    for (const population of targets) {
+      population.cod += total > 0 ? (added * population.cod) / total : added / targets.length;
+    }
+    const ratios = bodyRatios(archetype);
+    state.ledger.nIn += added * ratios.n;
+    state.ledger.pIn += added * ratios.p;
   }
 }
 
-/** Advances one fraction of a tick; docs/04 §2 order. */
+/** Advances one fraction of a tick; docs/04 §2 steps 2–9. */
 function integrate(
   state: SimulationState,
   hour: number,
@@ -198,34 +177,33 @@ function integrate(
   updateLandClimate(state, hour, dtTicks, firstSubstep);
   seedMicrobes(state, dtDays, geometry.landAreaM2);
 
-  const capacities = microbialCapacities(geometry, state.water.volumeL);
   const pools = toPools(state);
-  const handles = state.populations.map((population) => ({
-    id: population.id,
-    archetypeId: population.archetypeId,
-    cod: population.cod,
-  }));
+  const context = createBioContext(state, pools, geometry, dtDays);
+  const biomass = state.populations.filter(
+    (population): population is BiomassPopulation => population.kind === 'biomass',
+  );
+  const before = new Map(
+    biomass.map((population) => [populationKey(population.id), population.cod]),
+  );
   const processes = [
     ...leachingProcesses(pools, state.water.volumeL, dtDays),
-    ...waterMicrobeProcesses(pools, handles, {
-      volumeL: state.water.volumeL,
-      temperatureC: state.water.temperatureC,
-      ph: waterPh(state),
-      o2SaturationMgL: o2SaturationMgL(state),
-      anoxicFraction: geometry.anoxicFraction,
-      capacity: capacities,
-      dtDays,
-    }),
-    ...landMicrobeProcesses(pools, handles, {
-      landAreaM2: geometry.landAreaM2,
-      temperatureC: state.land.airTemperatureC,
-      soilMoisture: state.land.soilMoisture,
-      soilCapacity: capacities.soil,
-      dtDays,
-    }),
+    ...waterMicrobeProcesses(context, biomass),
+    ...landMicrobeProcesses(context, biomass),
+    ...producerProcesses(context, biomass),
+    ...symbiosisProcesses(context, state.populations),
+    ...feedingProcesses(
+      context,
+      predatorsOf(context, state.populations),
+      foodNodes(context, state.populations),
+    ),
+    ...respirationProcesses(context, state.populations),
+    ...mortalityProcesses(context, state.populations),
   ];
-  applyProcesses(pools, processes);
+  const effective = applyProcesses(pools, processes);
   fromPools(state, pools);
+  applyCohortFluxes(state, pools, processes, effective);
+  advanceClonalGenerations(state, processes, effective, before);
+  recordFluxes(state.records, processes, effective);
   if (geometry.landAreaM2 > 0 && geometry.waterFloorAreaM2 > 0) applyRunoff(state, dtDays);
 }
 
@@ -257,16 +235,46 @@ function integrateTick(state: SimulationState, hour: number): SimulationState {
   }
 }
 
+/** docs/04 §2 step 10 and §9.2: demography, arrivals, extinction, saturation. */
+function populationStep(state: SimulationState, geometry: Geometry, rng: Rng): SimEvent[] {
+  const events: SimEvent[] = [];
+  for (const population of updateSymbionts(
+    state.populations,
+    state.climate.ppfd,
+    state.water.temperatureC,
+  )) {
+    events.push(makeEvent('coral_bleaching', state.tick, { speciesId: population.speciesId }));
+  }
+  const space = spaceOf(state, geometry);
+  events.push(...updateCohorts(state, space, rng, state.tracking.saturated));
+  if (!state.tracking.saturated) arrivals(tickContext(state, geometry, 1 / 24), rng);
+  events.push(...removeExtinct(state));
+  const count = state.populations.length;
+  if (!state.tracking.saturated && count >= SATURATION_LIMIT) {
+    state.tracking.saturated = true;
+    events.push(makeEvent('ecosystem_saturated', state.tick));
+  } else if (state.tracking.saturated && count < SATURATION_RESUME) {
+    state.tracking.saturated = false;
+  }
+  for (const population of state.populations) {
+    if (!Number.isFinite(populationCod(population))) throw new Error(`Non-finite ${population.id}`);
+  }
+  return events;
+}
+
 /** Advances the simulation by one tick (1 game hour). */
 export function step(state: SimulationState, commands: readonly Command[] = []): StepResult {
   let next = cloneState(state);
-  const events: SimEvent[] = [];
-  applyCommands(next, commands);
+  const geometry = computeGeometry(next.config);
+  const rng = rngForTick(mix32(next.seedHash, BIOLOGY_STREAM), next.tick);
+  const events: SimEvent[] = applyCommands(next, commands, geometry, rng);
   const hour = next.tick % 24;
-  if (hour === 0) events.push(...startDay(next));
+  if (hour === 0) events.push(...startDay(next, geometry, rng));
   updateHourlyClimate(next, hour);
   const wasIceCovered = next.water.iceCover;
   next = integrateTick(next, hour);
+  events.push(...populationStep(next, geometry, rng));
+  sampleHistory(next);
   events.push(...hourlyEvents(next, wasIceCovered));
   next.tick += 1;
   return { state: next, events };

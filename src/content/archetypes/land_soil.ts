@@ -16,6 +16,27 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '苔',
     flags: ['photosynthetic'],
     trophicMode: 'photoautotroph',
+    niche: 'land',
+    kinetics: {
+      muMax: estimated(
+        0.015,
+        'below vascular understory RGR 0.011–0.021 d⁻¹',
+        'physiology_brito2025',
+      ),
+      halfSat: {
+        nitrogen: estimated(
+          0.33,
+          'root uptake Km applied to leaf water films',
+          'physiology_eucalyptusNh4',
+        ),
+        phosphorus: estimated(
+          0.22,
+          'root uptake Km applied to leaf water films',
+          'physiology_pepperPhosphate',
+        ),
+      },
+      darkRespiration: estimated(0.3, 'slow growers respire a larger share'),
+    },
     morphologies: ['墊狀', '叢生直立', '匍匐羽狀', '葉狀苔', '莖葉苔', '垂掛', '星狀', '絨毯'],
     specialisedMetabolism:
       '耐旱復甦：乾燥時代謝休止，濕度恢復後數小時內恢復光合；乾燥期不死亡但不成長',
@@ -89,6 +110,27 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '草',
     flags: ['photosynthetic'],
     trophicMode: 'photoautotroph',
+    niche: 'land',
+    kinetics: {
+      muMax: derived(
+        0.015,
+        'physiology_brito2025',
+        'high-light RGR 0.021 d⁻¹ at ≈ 25 °C ÷ 1.072^5',
+      ),
+      halfSat: {
+        nitrogen: derived(
+          0.33,
+          'physiology_eucalyptusNh4',
+          'geometric mean of root NH4+ 15 µM and NO3− 30–45 µM × 14.007/1000',
+        ),
+        phosphorus: derived(
+          0.22,
+          'physiology_pepperPhosphate',
+          'geometric mean of root 25.9 µM and transporter 1.9 µM × 30.97/1000',
+        ),
+      },
+      darkRespiration: estimated(0.3, 'slow growers respire a larger share'),
+    },
     morphologies: [
       '蔓生攀緣',
       '叢生蓮座',
@@ -181,6 +223,27 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '鳳梨',
     flags: ['photosynthetic'],
     trophicMode: 'photoautotroph',
+    niche: 'land',
+    kinetics: {
+      muMax: derived(
+        0.023,
+        'physiology_schmidtZotz2002',
+        'greenhouse ≈ 10 × in-situ RGR 3.3 × 10⁻³ d⁻¹ at ≈ 25 °C ÷ 1.072^5',
+      ),
+      halfSat: {
+        nitrogen: estimated(
+          0.33,
+          'root uptake Km applied to tank water',
+          'physiology_eucalyptusNh4',
+        ),
+        phosphorus: estimated(
+          0.22,
+          'root uptake Km applied to tank water',
+          'physiology_pepperPhosphate',
+        ),
+      },
+      darkRespiration: estimated(0.3, 'slow growers respire a larger share'),
+    },
     morphologies: [
       '筒狀蓮座',
       '開展蓮座',
@@ -270,6 +333,16 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '蕈',
     flags: [],
     trophicMode: 'decomposer',
+    niche: 'soil',
+    kinetics: {
+      muMax: derived(
+        2.16,
+        'microbes_aquatic_trinci1969',
+        'Aspergillus nidulans 0.090 h⁻¹ at 20 °C × 24 h',
+      ),
+      halfSat: {},
+      yieldCoefficient: estimated(0.67, 'heterotroph YH applied to hyphae', 'asm1'),
+    },
     morphologies: [
       '棉絮菌絲',
       '菌索',
@@ -318,11 +391,11 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     lifeHistory: {
       lifespanDays: {
         min: estimated(5, `hyphal segment lifespan; fruit bodies 1–5 d; ${DOCS09}`),
-        typLow: estimated(10, `hyphal segment lifespan; ${DOCS09}`),
-        typHigh: estimated(30, `hyphal segment lifespan; ${DOCS09}`),
-        max: estimated(60, `hyphal segment lifespan; ${DOCS09}`),
+        typLow: measured(130, 'land_soil_rousk2007'),
+        typHigh: measured(150, 'land_soil_rousk2007'),
+        max: estimated(180, 'longest-lived hyphae beyond the measured 130–150 d turnover'),
       },
-      gameCapDays: estimated(60, `hypha game cap; ${DOCS09}`),
+      gameCapDays: estimated(180, 'hypha game cap above the measured 130–150 d turnover'),
       maturityDays: {
         min: estimated(7, `colony establishment to sporulation; ${DOCS09}`),
         max: estimated(21, `colony establishment to sporulation; ${DOCS09}`),
@@ -330,7 +403,11 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
       reproduction: { mode: 'spores' },
       senescence: 'modular',
       recruitment: 'normal',
-      moduleLifespanDays: estimated(30, `hyphal segment lifespan; ${DOCS09}`),
+      moduleLifespanDays: derived(
+        140,
+        'land_soil_rousk2007',
+        'midpoint of turnover time 130–150 d',
+      ),
     },
     density: {
       typical: {
@@ -360,6 +437,12 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '細菌',
     flags: [],
     trophicMode: 'decomposer',
+    niche: 'soil',
+    kinetics: {
+      muMax: derived(6.0, 'land_soil_reischke2014', 'community exponential growth 0.25 h⁻¹ × 24 h'),
+      halfSat: {},
+      yieldCoefficient: measured(0.67, 'asm1'),
+    },
     morphologies: [
       '桿狀',
       '球狀',
