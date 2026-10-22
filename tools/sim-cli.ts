@@ -28,7 +28,7 @@ const PRESETS: Readonly<Record<string, { habitat: HabitatId; overrides: Partial<
 
 const USAGE =
   'npm run sim -- --seed <text> --days <n> --preset <freshwater|brackish|marine|rainforest> ' +
-  '[--feed <mg/day>] [--every <days>] [--release <archetype[:count]@day>]...';
+  '[--feed <mg/day>] [--every <days>] [--light <µmol>] [--release <archetype[:count]@day>]...';
 
 interface Release {
   readonly archetypeId: ArchetypeId;
@@ -130,6 +130,7 @@ function main(): void {
       preset: { type: 'string', default: 'freshwater' },
       feed: { type: 'string', default: '0' },
       every: { type: 'string', default: '10' },
+      light: { type: 'string' },
       release: { type: 'string', multiple: true, default: [] },
     },
   });
@@ -137,7 +138,9 @@ function main(): void {
   const every = Math.max(1, Number(values.every));
   const feedMg = Number(values.feed);
   const releases = values.release.map(parseRelease);
-  const config = presetConfig(values.preset);
+  const preset = presetConfig(values.preset);
+  const config =
+    values.light === undefined ? preset : { ...preset, lightPpfd: Number(values.light) };
   const geometry = computeGeometry(config);
   let state = createInitialState(config, values.seed);
   const initialN = totalNitrogen(state);

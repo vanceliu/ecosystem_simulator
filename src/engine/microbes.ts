@@ -203,7 +203,7 @@ export function waterMicrobeProcesses(
     .reduce((sum, m) => sum + m.population.cod, 0);
   const hydrolysisRate = MICROBIAL_PROCESSES.hydrolysisRate.value;
   const hydrolysisHalfSat = MICROBIAL_PROCESSES.hydrolysisHalfSat.value;
-  for (const pool of [WATER_FOOD, WATER_DETRITUS]) {
+  for (const pool of [WATER_DETRITUS]) {
     const cod = pools.get(pool.cod) ?? 0;
     if (cod <= 0 || hydrolyserCod <= 0) continue;
     const ratio = cod / hydrolyserCod;
@@ -243,7 +243,6 @@ export function waterMicrobeProcesses(
         stoichiometry = {
           [POOL.tan]: -(oxidisedN + ratios.n),
           [POOL.o2]: -(STOICHIOMETRY.o2PerNByAob.value * oxidisedN - 1),
-          [POOL.alkalinity]: -STOICHIOMETRY.alkalinityPerNNitrified.value * oxidisedN,
           [POOL.po4]: -ratios.p,
           [POOL.no2]: oxidisedN,
           [POOL.nitrified]: oxidisedN,
@@ -287,7 +286,6 @@ export function waterMicrobeProcesses(
           [POOL.tan]: -ratios.n,
           [POOL.po4]: -ratios.p,
           [POOL.n2Out]: reducedN,
-          [POOL.alkalinity]: STOICHIOMETRY.alkalinityPerNDenitrified.value * reducedN,
           [POOL.co2]: ((1 - yieldCoefficient) / yieldCoefficient) * RQ * CO2_PER_O2,
           [microbe.key]: 1,
         };

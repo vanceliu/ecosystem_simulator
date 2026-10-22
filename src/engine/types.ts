@@ -249,6 +249,8 @@ export interface Tracking {
   saturated: boolean;
   /** highest trophic-level milestone reported (docs/06 §4) */
   trophicMilestone: number;
+  /** substeps used by the previous tick; the next tick starts from half (docs/04 §9) */
+  substeps: number;
 }
 
 export interface SimulationState {

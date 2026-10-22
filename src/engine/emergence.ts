@@ -45,6 +45,10 @@ export const ARRIVAL_RATE_PER_DAY: Readonly<Partial<Record<Vector, number>>> = {
   open_inflow: 0.2,
   outside: 0.02,
 };
+/** docs/04 §7: new strains of background-seeded microbes per archetype per game day */
+export const MICROBE_STRAIN_ARRIVALS_PER_DAY = 0.05;
+/** docs/04 §7: a new microbial strain starts with this many days of background seeding */
+export const MICROBE_STRAIN_FOUNDING_DAYS = 20;
 /** docs/11 §7: outdoor tanks receive the `outside` route this many times as often */
 export const OUTDOOR_OUTSIDE_FACTOR = 5;
 /** docs/04 §7: chance an arrival reuses a genotype already seen in the tank */
@@ -64,6 +68,8 @@ export const RELEASE_BIOMASS_SHARE = 0.01;
 export const SATURATION_LIMIT = 2000;
 export const SATURATION_RESUME = 1900;
 const MARINE_SALINITY_PPT = 30;
+/** docs/04 §7: strains sharing a starting microbial inoculum or a first day of seeding */
+export const INITIAL_MICROBE_STRAINS = 3;
 /** draws tried when a microbe species must suit the tank */
 const SUITABLE_DRAW_ATTEMPTS = 8;
 
@@ -301,7 +307,7 @@ export function admit(
   if (archetype.kind === 'biomass') {
     const units = archetype.zone === 'T' ? space.geometry.landAreaM2 : space.waterVolumeL;
     const cod = isBackgroundMicrobe(archetype.id)
-      ? seedingCod(archetype.id, units, 1 / TICKS_PER_DAY)
+      ? seedingCod(archetype.id, units, MICROBE_STRAIN_FOUNDING_DAYS)
       : foundingCod(archetype, speciesId, space, FOUNDING_BIOMASS_SHARE);
     if (!(cod > 0)) return false;
     foundBiomass(state, speciesId, vector, cod);
@@ -360,7 +366,7 @@ export function inoculate(context: BioContext, rng: Rng): void {
   }
 }
 
-/** Background microbes with no population get one from a day's first tick of seeding. */
+/** Background microbes with no population get strains from one day of seeding. */
 function seedMissingMicrobes(context: BioContext, rng: Rng): void {
   const state = context.state;
   for (const id of Object.keys(BACKGROUND_SEEDING) as MicrobeId[]) {
@@ -369,12 +375,17 @@ function seedMissingMicrobes(context: BioContext, rng: Rng): void {
     const units =
       archetype.zone === 'T' ? context.space.geometry.landAreaM2 : context.space.waterVolumeL;
     if (units <= 0) continue;
-    const speciesId = pickSuitableGenotype(context, archetype, rng);
-    if (speciesId === null) continue;
-    const cod = seedingCod(id, units, 1 / TICKS_PER_DAY);
-    registerSpecies(state, { id: speciesId, origin: 'background', introduced: false });
-    foundBiomass(state, speciesId, 'background', cod);
-    creditImport(state, speciesId, cod);
+    const strains: GenotypeCode[] = [];
+    for (let draw = 0; draw < INITIAL_MICROBE_STRAINS; draw += 1) {
+      const speciesId = pickSuitableGenotype(context, archetype, rng);
+      if (speciesId !== null) strains.push(speciesId);
+    }
+    const cod = seedingCod(id, units, 1) / Math.max(1, strains.length);
+    for (const speciesId of strains) {
+      registerSpecies(state, { id: speciesId, origin: 'background', introduced: false });
+      foundBiomass(state, speciesId, 'background', cod);
+      creditImport(state, speciesId, cod);
+    }
   }
 }
 
@@ -389,13 +400,32 @@ export function arrivals(context: BioContext, rng: Rng): void {
   if (!state.config.lid) open.push('outside');
   for (const vector of open) {
     const perDay = (ARRIVAL_RATE_PER_DAY[vector] ?? 0) * (vector === 'outside' ? outsideFactor : 1);
-    const probability = perDay / TICKS_PER_DAY;
     for (const id of ARCHETYPE_IDS) {
       const archetype = getArchetype(id);
       if (!archetype.vectors.includes(vector)) continue;
+      const strains = vector === 'background' && isBackgroundMicrobe(id);
+      const probability = (strains ? MICROBE_STRAIN_ARRIVALS_PER_DAY : perDay) / TICKS_PER_DAY;
       tryArrival(context, archetype, vector, realm, probability, rng);
     }
   }
+}
+
+/** docs/05 §3 release draw: environment-weighted, retried until the species can live here. */
+function drawReleasable(context: BioContext, archetype: Archetype, rng: Rng): GenotypeCode | null {
+  const state = context.state;
+  for (let attempt = 0; attempt < SUITABLE_DRAW_ATTEMPTS; attempt += 1) {
+    const speciesId = sampleGenotype(
+      archetype,
+      rng,
+      samplingEnvironment(state, archetype, context),
+    );
+    if (speciesId === null) continue;
+    const phenotype = phenotypeOf(speciesId);
+    const w = waterFraction(archetype, phenotype, context.media, false);
+    const temperature = bodyTemperature(state, archetype, w, context.lightsOn);
+    if (environmentFactor(state, phenotype, temperature, w) > 0) return speciesId;
+  }
+  return null;
 }
 
 /** docs/06 §2 release: five adults, or 1% of capacity for biomass groups. */
@@ -406,7 +436,7 @@ export function release(
 ): SimEvent | null {
   const state = context.state;
   const archetype = getArchetype(command.archetypeId);
-  const speciesId = command.speciesId ?? sampleGenotype(archetype, rng);
+  const speciesId = command.speciesId ?? drawReleasable(context, archetype, rng);
   const reject = (reason: EnclosureProblem | 'no_capacity' | 'no_species'): SimEvent =>
     makeEvent('release_rejected', state.tick, {
       ...(speciesId === null ? {} : { speciesId }),

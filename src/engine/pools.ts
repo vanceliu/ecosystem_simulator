@@ -1,5 +1,6 @@
 import { cohortCod } from './biota';
-import type { Pools } from './fluxes';
+import { STOICHIOMETRY } from '../content/stoichiometry';
+import type { Pools, Process } from './fluxes';
 import type { OrganicPool, SimulationState } from './types';
 
 export const POOL = {
@@ -121,4 +122,22 @@ export function fromPools(state: SimulationState, pools: Pools): void {
   state.ledger.pOut += pools.get(POOL.exportP) ?? 0;
   state.ledger.nIn += pools.get(POOL.fixedN) ?? 0;
   state.tracking.nitrifiedN += pools.get(POOL.nitrified) ?? 0;
+}
+
+/**
+ * docs/04 §3.2 proton balance: alkalinity changes by one equivalent per mg N of ammonium
+ * gained or nitrite/nitrate lost (ammonification, nitrification, denitrification, uptake).
+ */
+export function withAlkalinity(process: Process): Process {
+  const terms = process.stoichiometry;
+  const equivalents = (terms[POOL.tan] ?? 0) - (terms[POOL.no2] ?? 0) - (terms[POOL.no3] ?? 0);
+  if (equivalents === 0) return process;
+  return {
+    ...process,
+    stoichiometry: {
+      ...terms,
+      [POOL.alkalinity]:
+        (terms[POOL.alkalinity] ?? 0) + equivalents * STOICHIOMETRY.alkalinityPerNEquivalent.value,
+    },
+  };
 }

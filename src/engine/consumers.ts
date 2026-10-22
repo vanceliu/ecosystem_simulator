@@ -69,6 +69,10 @@ export const DEFENSE_REFUGE: Readonly<Record<Defense, number>> = {
   mucus: 0.8,
 };
 const MIN_REFUGE = 0.05;
+/** docs/04 §5.4 refuge of biomass embedded in biofilm or sediment */
+export const EMBEDDED_REFUGE = 0.1;
+const EMBEDDED_NICHES: ReadonlySet<BiomassNiche> = new Set(['surface', 'sediment']);
+
 /** Habitats a biomass population occupies, by niche, for niche overlap (docs/04 §5.4). */
 export const NICHE_HABITATS: Readonly<Record<BiomassNiche, readonly Habitat[]>> = {
   water_column: ['pelagic', 'surface'],
@@ -234,7 +238,11 @@ export function foodNodes(context: BioContext, populations: readonly Population[
         isCohort: false,
         w: medium === 'water' ? 1 : 0,
         habitats: archetype.kind === 'biomass' ? NICHE_HABITATS[archetype.niche] : [],
-        vulnerability: vulnerability(phenotype, context.lightsOn),
+        vulnerability:
+          vulnerability(phenotype, context.lightsOn) *
+          (archetype.kind === 'biomass' && EMBEDDED_NICHES.has(archetype.niche)
+            ? EMBEDDED_REFUGE
+            : 1),
       });
       continue;
     }
@@ -424,13 +432,17 @@ export function predatorsOf(context: BioContext, populations: readonly Populatio
   return predators;
 }
 
-/** Scaled food terms (a_ij R_j)^h for one predator (docs/04 §5.4). */
+/**
+ * Scaled food terms (a_ij R_j)^h for one predator (docs/04 §5.4). Diet weights are
+ * renormalised over the food kinds present, so a predator switches to what it can find.
+ */
 export function attackTerms(
   context: BioContext,
   predator: Predator,
   nodes: readonly FoodNode[],
 ): { node: FoodNode; kind: FoodKind; term: number }[] {
-  const terms: { node: FoodNode; kind: FoodKind; term: number }[] = [];
+  const candidates: { node: FoodNode; kind: FoodKind; scaled: number }[] = [];
+  const present = new Set<FoodKind>();
   const volume = context.space.waterVolumeL;
   const area = context.space.geometry.landAreaM2;
   for (const node of nodes) {
@@ -470,10 +482,17 @@ export function attackTerms(
         predator.activity *
         density) /
       predator.halfSaturation(kind, node.medium);
-    const term = Math.pow(scaled, FUNCTIONAL_RESPONSE_EXPONENT.value);
-    if (term > 0) terms.push({ node, kind, term });
+    if (!(scaled > 0)) continue;
+    present.add(kind);
+    candidates.push({ node, kind, scaled });
   }
-  return terms;
+  const totalPreference = [...present].reduce((sum, kind) => sum + (predator.diet[kind] ?? 0), 0);
+  if (totalPreference <= 0) return [];
+  return candidates.map(({ node, kind, scaled }) => ({
+    node,
+    kind,
+    term: Math.pow(scaled / totalPreference, FUNCTIONAL_RESPONSE_EXPONENT.value),
+  }));
 }
 
 function detritusTarget(context: BioContext, w: number): OrganicKeys {

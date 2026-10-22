@@ -14,8 +14,8 @@ export const STOICHIOMETRY = {
   cellDryMassMg: measured(3e-10, 'bionumbers'),
   o2PerNByAob: derived(3.43, 'nitrificationStoichiometry', 'NH4+ → NO2−: 3 × 32 / (2 × 14)'),
   o2PerNByNob: derived(1.14, 'nitrificationStoichiometry', '4.57 total − 3.43 ammonia step'),
-  alkalinityPerNNitrified: measured(7.14, 'nitrificationStoichiometry'),
-  alkalinityPerNDenitrified: measured(3.57, 'nitrificationStoichiometry'),
+  /** mg CaCO3 alkalinity per mg N of one proton equivalent (NH4+ gained, NO2−/NO3− lost) */
+  alkalinityPerNEquivalent: measured(3.57, 'nitrificationStoichiometry'),
   caco3PerDkh: derived(17.86, 'carbonateEquilibrium', '1 dKH = 10 mg CaO/L = 17.86 mg CaCO3/L'),
   respiratoryQuotient: estimated(
     1.0,

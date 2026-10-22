@@ -27,31 +27,32 @@ export function addTerm(terms: Record<string, number>, key: string, coefficient:
  * Returns the effective rate of each process, in input order.
  */
 export function applyProcesses(pools: Pools, processes: readonly Process[]): number[] {
+  const entries = processes.map((process) => Object.entries(process.stoichiometry));
   const demand = new Map<string, number>();
-  for (const process of processes) {
-    if (!(process.rate > 0)) continue;
-    for (const [key, coefficient] of Object.entries(process.stoichiometry)) {
-      if (coefficient < 0) {
-        demand.set(key, (demand.get(key) ?? 0) - coefficient * process.rate);
-      }
+  processes.forEach((process, index) => {
+    if (!(process.rate > 0)) return;
+    for (const [key, coefficient] of entries[index] ?? []) {
+      if (coefficient < 0) demand.set(key, (demand.get(key) ?? 0) - coefficient * process.rate);
     }
-  }
+  });
   const poolScale = new Map<string, number>();
   for (const [key, total] of demand) {
     const available = Math.max(0, pools.get(key) ?? 0);
-    poolScale.set(key, total > available ? available / total : 1);
+    if (total > available) poolScale.set(key, available / total);
   }
-  return processes.map((process) => {
+  return processes.map((process, index) => {
     if (!(process.rate > 0)) return 0;
+    const terms = entries[index] ?? [];
     let scale = 1;
-    for (const [key, coefficient] of Object.entries(process.stoichiometry)) {
-      if (coefficient < 0) scale = Math.min(scale, poolScale.get(key) ?? 1);
+    if (poolScale.size > 0) {
+      for (const [key, coefficient] of terms) {
+        if (coefficient < 0) scale = Math.min(scale, poolScale.get(key) ?? 1);
+      }
     }
     const effective = process.rate * scale;
     if (effective <= 0) return 0;
-    for (const [key, coefficient] of Object.entries(process.stoichiometry)) {
-      const next = (pools.get(key) ?? 0) + coefficient * effective;
-      pools.set(key, Math.max(0, next));
+    for (const [key, coefficient] of terms) {
+      pools.set(key, Math.max(0, (pools.get(key) ?? 0) + coefficient * effective));
     }
     return effective;
   });

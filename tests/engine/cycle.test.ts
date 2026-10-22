@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CYCLE_MIN_TOTAL_NITRIFIED_MG_L } from '../../src/engine/events';
 import { cloneState, totalNitrogen, totalPhosphorus } from '../../src/engine/index';
 import { CYCLING_TANK, DAILY_FEED_MG, FEED_HOUR } from './fixtures';
 import { peakDay, runDays } from './simulation';
@@ -27,9 +28,12 @@ describe('fishless cycle (docs/06 §4, docs/00 M1)', () => {
     expect(peakDay(result.daily, 'tanMgL')).toBeLessThan(peakDay(result.daily, 'no2MgL'));
   });
 
-  it('accumulates nitrate once cycled', () => {
+  it('keeps oxidising ammonia once cycled', () => {
     const last = result.daily.at(-1);
-    expect(last?.no3MgL ?? 0).toBeGreaterThan(3);
+    const volume = result.final.water.volumeL;
+    expect(result.final.tracking.nitrifiedN / volume).toBeGreaterThanOrEqual(
+      CYCLE_MIN_TOTAL_NITRIFIED_MG_L,
+    );
     expect(last?.tanMgL ?? 1).toBeLessThan(0.25);
     expect(last?.no2MgL ?? 1).toBeLessThan(0.25);
   });

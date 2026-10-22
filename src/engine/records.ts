@@ -145,6 +145,8 @@ export function rollRecords(state: SimulationState): void {
   }
   const alive = new Set(state.populations.map((population) => population.speciesId));
   for (const [speciesId, row] of Object.entries(records.history)) {
-    if (!alive.has(speciesId)) row[records.day % HISTORY_DAYS] = 0;
+    if (alive.has(speciesId)) continue;
+    row[records.day % HISTORY_DAYS] = 0;
+    if (row.every((value) => value === 0)) delete records.history[speciesId];
   }
 }

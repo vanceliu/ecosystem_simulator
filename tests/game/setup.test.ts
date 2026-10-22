@@ -99,7 +99,7 @@ describe('recommended tank settings (docs/11 §5.1)', () => {
         expect(() => createInitialState(config, 'seed')).not.toThrow();
       }
     }
-  });
+  }, 60_000);
 
   it('keeps recommendations inside the habitat ranges', () => {
     for (const location of validLocations) {

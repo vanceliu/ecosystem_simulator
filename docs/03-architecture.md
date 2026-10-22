@@ -36,8 +36,11 @@ src/
     tankOptions.ts     建缸選項
     sources.ts         來源登錄表
     sourced.ts         參數依據型別（measured／derived／estimated）
-    microbes.ts        微生物動力學
-    stoichiometry.ts   化學計量、飼料與落葉組成
+    microbes.ts        微生物共通過程、容量、背景接種
+    physiology.ts      身體組成、代謝尺度、攝食、同化效率、共生常數
+    physiologySources.ts  生理參數來源登錄表
+    foodWeb.ts         功能群對應的食物類別
+    stoichiometry.ts   化學計量、飼料與落葉組成、容量換算
     waterSources.ts    水源水質與初始菌量
     climate.ts         氣候型、蒸發
     habitats.ts        棲地推薦與可選條件
@@ -67,15 +70,24 @@ src/
     hydrology.ts       降雨、蒸發、溢流、潮汐、季節乾涸
     sourceWater.ts     注水組成（水源、RO 稀釋、人工海鹽）
     land.ts            陸域氣候、逕流
-    fluxes.ts          通量限制器
-    microbes.ts        溶出、水解、硝化、脫氮、土壤分解
+    fluxes.ts          通量限制器、過程型別
+    pools.ts           池鍵、狀態 ↔ 池轉換、鹼度質子平衡
+    bioContext.ts      子步長共用的生物條件
+    biota.ts           表現型快取、身體組成、體溫、f_env、區域使用
+    capacity.ts        容量換算、最小飼養空間
+    crowding.ts        容量占用與擁擠
+    microbes.ts        溶出、水解、微生物成長、土壤分解
+    producers.ts       光合作用、暗呼吸
+    consumers.ts       食物節點、功能反應攝食、維持呼吸
+    symbiosis.ts       珊瑚共生、白化
+    mortality.ts       衰老與壓力死亡
+    demography.ts      世代群更新、繁殖、變態、滅絕
+    founding.ts        物種登錄、族群建立
+    emergence.ts       建缸接種、湧現、玩家投放
+    daily.ts           每日建立判定、族群事件、突變、警示
+    records.ts         通量、族群歷史、營養層級
     state.ts           初始狀態、質量總計
-    producers.ts
-    consumers.ts
-    symbiosis.ts
-    emergence.ts
-    mortality.ts
-    step.ts
+    step.ts            每 tick 處理順序
     events.ts
   game/
     setup.ts           地點驗證、推薦建缸設定

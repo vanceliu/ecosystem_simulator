@@ -198,22 +198,27 @@ export function advanceClonalGenerations(
   effective: readonly number[],
   before: ReadonlyMap<string, number>,
 ): void {
+  const clonal = new Map<string, BiomassPopulation>();
+  for (const population of state.populations) {
+    if (population.kind !== 'biomass') continue;
+    if (getArchetype(population.archetypeId).lifeHistory.senescence !== 'clonal_aging') continue;
+    clonal.set(populationKey(population.id), population);
+  }
+  if (clonal.size === 0) return;
   const grown = new Map<string, number>();
   processes.forEach((process, index) => {
     const amount = effective[index] ?? 0;
     if (amount <= 0) return;
-    for (const [key, coefficient] of Object.entries(process.stoichiometry)) {
-      if (coefficient > 0 && key.startsWith('pop:'))
+    for (const key in process.stoichiometry) {
+      const coefficient = process.stoichiometry[key] ?? 0;
+      if (coefficient > 0 && clonal.has(key))
         grown.set(key, (grown.get(key) ?? 0) + coefficient * amount);
     }
   });
-  for (const population of state.populations) {
-    if (population.kind !== 'biomass') continue;
-    const archetype = getArchetype(population.archetypeId);
-    if (archetype.lifeHistory.senescence !== 'clonal_aging') continue;
-    const key = populationKey(population.id);
+  for (const [key, growth] of grown) {
+    const population = clonal.get(key);
     const start = before.get(key) ?? 0;
-    const growth = grown.get(key) ?? 0;
-    if (start > 0 && growth > 0) population.clonalGenerations += Math.log2(1 + growth / start);
+    if (population !== undefined && start > 0)
+      population.clonalGenerations += Math.log2(1 + growth / start);
   }
 }

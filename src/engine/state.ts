@@ -21,12 +21,26 @@ import { waterComposition } from './sourceWater';
 import type { Vector } from '../content/archetype';
 import { createBioContext } from './bioContext';
 import { bodyRatios, populationCod } from './biota';
-import { inoculate, ORIGIN, pickSuitableGenotype, setupRoutes, type Route } from './emergence';
+import {
+  INITIAL_MICROBE_STRAINS,
+  inoculate,
+  ORIGIN,
+  pickSuitableGenotype,
+  setupRoutes,
+  type Route,
+} from './emergence';
 import { foundBiomass, registerSpecies } from './founding';
 import { toPools } from './pools';
 import { emptyRecords } from './records';
 import { createRng, hashSeed, mix32 } from './rng';
-import type { ClimateState, OrganicPool, SimulationState, TankConfig } from './types';
+import type {
+  ClimateState,
+  OrganicPool,
+  Population,
+  Records,
+  SimulationState,
+  TankConfig,
+} from './types';
 
 const MICROBE_ORDER: readonly MicrobeId[] = [
   'heterotroph',
@@ -270,6 +284,7 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       dryAirAlert: false,
       saturated: false,
       trophicMilestone: 0,
+      substeps: 1,
     },
   };
   state.land.humidity = targetHumidity(state);
@@ -281,11 +296,16 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
     const cod = startingCod[archetypeId] ?? 0;
     if (!(cod > 0)) continue;
     const archetype = getArchetype(archetypeId);
-    const speciesId = pickSuitableGenotype(context, archetype, rng);
-    if (speciesId === null) continue;
     const vector = microbeVector(archetype.zone === 'T', routes);
-    registerSpecies(state, { id: speciesId, origin: ORIGIN[vector], introduced: false });
-    foundBiomass(state, speciesId, vector, cod);
+    const strains: string[] = [];
+    for (let draw = 0; draw < INITIAL_MICROBE_STRAINS; draw += 1) {
+      const speciesId = pickSuitableGenotype(context, archetype, rng);
+      if (speciesId !== null) strains.push(speciesId);
+    }
+    for (const speciesId of strains) {
+      registerSpecies(state, { id: speciesId, origin: ORIGIN[vector], introduced: false });
+      foundBiomass(state, speciesId, vector, cod / strains.length);
+    }
   }
   inoculate(createBioContext(state, toPools(state), geometry, 0), rng);
   state.ledger = { nIn: 0, nOut: 0, pIn: 0, pOut: 0 };
@@ -310,8 +330,60 @@ function microbeVector(onLand: boolean, routes: readonly Route[]): Vector {
   return routes.find((route) => wanted.includes(route.vector))?.vector ?? 'background';
 }
 
+const copyRows = (table: Readonly<Record<string, number[]>>): Record<string, number[]> => {
+  const copy: Record<string, number[]> = {};
+  for (const key in table) copy[key] = (table[key] ?? []).slice();
+  return copy;
+};
+
+export function copyPopulations(populations: readonly Population[]): Population[] {
+  return populations.map((population) =>
+    population.kind === 'biomass'
+      ? { ...population, recentDaySize: population.recentDaySize.slice() }
+      : {
+          ...population,
+          recentDaySize: population.recentDaySize.slice(),
+          cohorts: population.cohorts.map((cohort) => ({ ...cohort })),
+        },
+  );
+}
+
+export function copyRecords(records: Records): Records {
+  const accumulator: Record<string, [number, number]> = {};
+  for (const key in records.historyAccumulator) {
+    const entry = records.historyAccumulator[key];
+    if (entry !== undefined) accumulator[key] = [entry[0], entry[1]];
+  }
+  return {
+    day: records.day,
+    feeding: copyRows(records.feeding),
+    chemistry: copyRows(records.chemistry),
+    history: copyRows(records.history),
+    historyAccumulator: accumulator,
+    trophicLevels: { ...records.trophicLevels },
+  };
+}
+
+/** Deep copy of the mutable state; the config and species records are immutable and shared. */
 export function cloneState(state: SimulationState): SimulationState {
-  return JSON.parse(JSON.stringify(state)) as SimulationState;
+  const water = state.water;
+  const land = state.land;
+  return {
+    ...state,
+    water: {
+      ...water,
+      food: { ...water.food },
+      detritus: { ...water.detritus },
+      inert: { ...water.inert },
+    },
+    land: { ...land, litter: { ...land.litter } },
+    climate: { ...state.climate },
+    species: { ...state.species },
+    populations: copyPopulations(state.populations),
+    records: copyRecords(state.records),
+    ledger: { ...state.ledger },
+    tracking: { ...state.tracking },
+  };
 }
 
 /** Living N or P held by all populations, mg. */

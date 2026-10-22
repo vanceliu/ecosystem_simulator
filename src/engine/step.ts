@@ -17,7 +17,7 @@ import { applyCohortFluxes, removeExtinct, updateCohorts } from './demography';
 import { arrivals, release, SATURATION_LIMIT, SATURATION_RESUME } from './emergence';
 import { exchangeGases, lampPpfd, updateWaterTemperature } from './environment';
 import { dayEndEvents, hourlyEvents, makeEvent, seasonEvents } from './events';
-import { applyProcesses } from './fluxes';
+import { applyProcesses, type Process } from './fluxes';
 import { computeGeometry, type Geometry } from './geometry';
 import { addRainToLand, updateHydrology } from './hydrology';
 import { applyRunoff, updateLandClimate } from './land';
@@ -28,19 +28,19 @@ import {
   waterMicrobeProcesses,
 } from './microbes';
 import { mortalityProcesses } from './mortality';
-import { fromPools, populationKey, toPools } from './pools';
+import { fromPools, populationKey, toPools, withAlkalinity } from './pools';
 import { producerProcesses } from './producers';
 import { recordFluxes, rollRecords, sampleHistory } from './records';
 import { mix32, rngForTick, type Rng } from './rng';
-import { cloneState } from './state';
+import { cloneState, copyPopulations } from './state';
 import { symbiosisProcesses, updateSymbionts } from './symbiosis';
 import type { BiomassPopulation, Command, SimEvent, SimulationState, StepResult } from './types';
 
 /** docs/04 §9: split a tick when any tracked pool changes by more than this fraction. */
 export const MAX_RELATIVE_CHANGE = 0.5;
 export const MAX_SUBSTEPS = 8;
-/** Pools below this mass are ignored by the substep check. */
-const SUBSTEP_MASS_FLOOR_MG = 1e-3;
+/** docs/04 §9: pools below this concentration (mg/L) are ignored by the substep check. */
+export const SUBSTEP_CONCENTRATION_FLOOR = 0.1;
 /** docs/11 §7: light through ice; snow-covered ice */
 const ICE_LIGHT_FACTOR = 0.5;
 const SNOW_LIGHT_FACTOR = 0.05;
@@ -139,22 +139,20 @@ function updateHourlyClimate(state: SimulationState, hour: number): void {
   }
 }
 
-/** docs/04 §5.2 background seeding of microbes already living in the tank. */
+/** docs/04 §5.2 background seeding into the dominant strain of each seeded microbe. */
 function seedMicrobes(state: SimulationState, dtDays: number, landAreaM2: number): void {
   for (const id of Object.keys(BACKGROUND_SEEDING) as MicrobeId[]) {
     const archetype = getArchetype(id);
     const units = archetype.zone === 'T' ? landAreaM2 : state.water.volumeL;
     if (units <= 0) continue;
-    const targets = state.populations.filter(
-      (population): population is BiomassPopulation =>
-        population.kind === 'biomass' && population.archetypeId === id,
-    );
-    if (targets.length === 0) continue;
-    const added = seedingCod(id, units, dtDays);
-    const total = targets.reduce((sum, population) => sum + population.cod, 0);
-    for (const population of targets) {
-      population.cod += total > 0 ? (added * population.cod) / total : added / targets.length;
+    let dominant: BiomassPopulation | null = null;
+    for (const population of state.populations) {
+      if (population.kind !== 'biomass' || population.archetypeId !== id) continue;
+      if (dominant === null || population.cod > dominant.cod) dominant = population;
     }
+    if (dominant === null) continue;
+    const added = seedingCod(id, units, dtDays);
+    dominant.cod += added;
     const ratios = bodyRatios(archetype);
     state.ledger.nIn += added * ratios.n;
     state.ledger.pIn += added * ratios.p;
@@ -167,7 +165,7 @@ function integrate(
   hour: number,
   dtTicks: number,
   firstSubstep: boolean,
-): void {
+): SubstepFluxes {
   const dtDays = dtTicks / 24;
   const geometry = computeGeometry(state.config);
   updateWaterTemperature(state, dtTicks);
@@ -198,40 +196,69 @@ function integrate(
     ),
     ...respirationProcesses(context, state.populations),
     ...mortalityProcesses(context, state.populations),
-  ];
+  ].map(withAlkalinity);
   const effective = applyProcesses(pools, processes);
   fromPools(state, pools);
   applyCohortFluxes(state, pools, processes, effective);
   advanceClonalGenerations(state, processes, effective, before);
-  recordFluxes(state.records, processes, effective);
   if (geometry.landAreaM2 > 0 && geometry.waterFloorAreaM2 > 0) applyRunoff(state, dtDays);
+  return { processes, effective };
 }
 
+interface SubstepFluxes {
+  readonly processes: readonly Process[];
+  readonly effective: readonly number[];
+}
+
+/** Copies the parts of the state that integration mutates; records and species are shared. */
+function cloneForIntegration(state: SimulationState): SimulationState {
+  return {
+    ...state,
+    water: {
+      ...state.water,
+      food: { ...state.water.food },
+      detritus: { ...state.water.detritus },
+      inert: { ...state.water.inert },
+    },
+    land: { ...state.land, litter: { ...state.land.litter } },
+    populations: copyPopulations(state.populations),
+    ledger: { ...state.ledger },
+    tracking: { ...state.tracking },
+  };
+}
+
+/** Tracked water pools as concentrations (mg/L), plus the volume itself. */
 function trackedValues(state: SimulationState): number[] {
   const w = state.water;
-  return [w.o2, w.tan, w.no2, w.no3, w.po4, w.substrateCod, w.food.cod, w.detritus.cod, w.volumeL];
+  const volume = Math.max(w.volumeL, 1e-9);
+  const pools = [w.o2, w.tan, w.no2, w.no3, w.po4, w.substrateCod, w.food.cod, w.detritus.cod];
+  return [...pools.map((mass) => mass / volume), w.volumeL];
 }
 
 function exceedsChange(before: readonly number[], after: readonly number[]): boolean {
   return before.some((value, index) => {
     const next = after[index] ?? 0;
-    if (value < SUBSTEP_MASS_FLOOR_MG) return false;
+    if (value < SUBSTEP_CONCENTRATION_FLOOR) return false;
     return Math.abs(next - value) / value > MAX_RELATIVE_CHANGE;
   });
 }
 
 function integrateTick(state: SimulationState, hour: number): SimulationState {
   const before = trackedValues(state);
-  let substeps = 1;
+  let substeps = Math.max(1, Math.floor(state.tracking.substeps / 2));
   for (;;) {
-    const candidate = cloneState(state);
+    const candidate = cloneForIntegration(state);
+    const fluxes: SubstepFluxes[] = [];
     for (let index = 0; index < substeps; index += 1) {
-      integrate(candidate, hour, 1 / substeps, index === 0);
+      fluxes.push(integrate(candidate, hour, 1 / substeps, index === 0));
     }
     if (substeps >= MAX_SUBSTEPS || !exceedsChange(before, trackedValues(candidate))) {
+      for (const { processes, effective } of fluxes)
+        recordFluxes(candidate.records, processes, effective);
+      candidate.tracking.substeps = substeps;
       return candidate;
     }
-    substeps *= 2;
+    substeps = Math.min(MAX_SUBSTEPS, substeps * 2);
   }
 }
 
