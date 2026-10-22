@@ -14,7 +14,7 @@ import {
 } from '../../src/engine/index';
 import { createBioContext } from '../../src/engine/bioContext';
 import { cohortCod, phenotypeOf } from '../../src/engine/biota';
-import { attackTerms, foodNodes, predatorOf } from '../../src/engine/consumers';
+import { attackTerms, foodNodes, indexFood, predatorOf } from '../../src/engine/consumers';
 import { removeExtinct } from '../../src/engine/demography';
 import { toPools } from '../../src/engine/pools';
 import type {
@@ -204,7 +204,7 @@ describe('functional response (docs/04 §5.4)', () => {
     const predator = predatorOf(context, fish);
     expect(predator).not.toBeNull();
     if (predator === null) return;
-    const feed = attackTerms(context, predator, foodNodes(context, [])).find(
+    const feed = attackTerms(context, predator, indexFood(foodNodes(context, []))).find(
       (entry) => entry.kind === 'food',
     );
     expect(feed?.term ?? 0).toBeGreaterThan(1);

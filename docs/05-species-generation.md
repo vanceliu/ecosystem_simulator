@@ -52,6 +52,34 @@ interface Species {
 | `morphology` 形態 | 8 | 功能群定義（例：球狀、桿狀、絲狀、鏈狀、群體、扁平、星狀、螺旋） | 外觀；`K` × 0.8–1.2（功能群定義） |
 | `metabolism` 代謝型 | 4 | 高親和、均衡、高速、特化 | 高親和：半飽和常數 × 0.5、`muMax` × 0.8；高速：半飽和常數 × 1.5、`muMax` × 1.2；特化：功能群定義 |
 
+**特化代謝效果**（`metabolism` = 特化時套用；數值與來源見 `src/content/archetypes` 的 `specialised`）
+
+| 功能群 | 特化 | 效果 |
+|---|---|---|
+| `aob` | 耐低氧 | O₂ 半飽和 × 0.5 |
+| `nob` | 完全硝化 | 另以 tan 為基質直接氧化為 no3（半飽和 0.012 mg N/L，速率 0.3 × `muMax`） |
+| `heterotroph` | 寡營養 | 基質半飽和 × 0.1；惰性有機物每日 0.002 轉為可分解基質 |
+| `denitrifier` | 好氧脫氮 | 有氧時保留 50% 脫氮 |
+| `water_mold` | 寄生 | 以卵為食，最大攝食每日 0.5 × 自身生物量 |
+| `biofilm` | 光合型 | 光照下另以 0.5 × `muMax` 光合成長 |
+| `diatom` | 低矽 | 矽沉積 × 0.4 |
+| `green_algae` | 碳酸氫根利用 | CO₂ 半飽和 × 0.3 |
+| `cyanobacteria` | 產毒 | 被捕食率 × 0.25 |
+| `phytoplankton` | 混合營養 | 黑暗中以 0.5 × `muMax` 利用溶解有機物 |
+| `aquatic_plant` | 挺水 | CO₂ 不受限、不與水交換 O₂／CO₂；成長 × 2 |
+| `macroalgae` | 鈣化 | 每 mg COD 成長沉積 Ca 1.13 mg |
+| `zooxanthellae` | 耐熱 | 宿主珊瑚白化門檻 +1.25 °C；光合產物 × 0.5 |
+| `ciliate` | 共生藻 | 光照下另以 0.15 × `muMax` 光合成長 |
+| `moss_liverwort` | 耐旱 | 乾燥死亡率 × 0.1 |
+| `terrestrial_plant` | 耐陰 | 光半飽和與最適光 × 0.4 |
+| `bromeliad_epiphyte` | CAM | `humidityMin` −20%；成長 × 0.63 |
+| `saprotrophic_fungus` | 白腐 | 落葉每日 0.01 直接分解；成長 × 0.5 |
+| `soil_bacteria` | 芽孢 | 乾燥死亡率 × 0.02 |
+
+- 光合型與共生藻的光反應採 `phytoplankton` 功能群光參數。
+- 寡營養與白腐的分解在菌株生物量達所屬棲位容量 1% 時達全速，低於時等比例降低。
+- 每個珊瑚物種攜帶固定的蟲黃藻基因型（由珊瑚物種 ID 決定），其特化效果作用於該珊瑚。
+
 ### 2.4 物種空間
 
 | 族群型態 | 功能群數 | 每功能群組合數 | 小計 |

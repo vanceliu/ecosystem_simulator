@@ -7,6 +7,7 @@ import {
   SUBSTRATES,
   WILD_LITTER_STOCK,
   WILD_MATERIALS,
+  WILD_SEDIMENT_NUTRIENTS,
 } from '../content/tankOptions';
 import { CO2_EQUILIBRIUM_MG_L, oxygenSaturation, pressureAtm } from './atmosphere';
 import { dailyClimate, hourlyAmbientTemperature } from './climate';
@@ -57,6 +58,7 @@ const SETUP_STREAM = 0x5e7019;
 const ML_PER_L = 1000;
 const MG_PER_G = 1000;
 const CM2_PER_M2 = 1e4;
+const LITRES_PER_M2_CM = 10;
 /** Wild inocula fill at most this share of a habitat's microbial capacity. */
 const MAX_INITIAL_CAPACITY_SHARE = 0.5;
 
@@ -170,6 +172,20 @@ function wildSoilMicrobes(
   return { soil_bacteria: bacteria * scale, saprotrophic_fungus: fungus * scale };
 }
 
+/** docs/04 §3.3 exchangeable N and P carried by the substrate, mg. */
+function sedimentNutrients(config: TankConfig, geometry: Geometry): { n: number; p: number } {
+  if (config.substrate === 'bare' || geometry.nominalWaterVolumeL <= 0) return { n: 0, p: 0 };
+  const spec = SUBSTRATES[config.substrate];
+  const litres = geometry.waterFloorAreaM2 * config.substrateDepthCm * LITRES_PER_M2_CM;
+  const kg = litres * spec.bulkDensity.value;
+  const inert = spec.exchangeableN.value === 0 && spec.exchangeableP.value === 0;
+  const wild = config.substrateSource.origin === 'wild' && inert;
+  return {
+    n: kg * (wild ? WILD_SEDIMENT_NUTRIENTS.exchangeableN.value : spec.exchangeableN.value),
+    p: kg * (wild ? WILD_SEDIMENT_NUTRIENTS.exchangeableP.value : spec.exchangeableP.value),
+  };
+}
+
 function initialLitter(config: TankConfig, geometry: Geometry): OrganicPool {
   if (config.landSubstrate === null) return emptyPool();
   const dryG =
@@ -216,6 +232,7 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       : Math.max(0, climate.ambientDayMeanC);
   const atm = pressureAtm(config.location.altitudeM);
   const wild = wildWaterMaterials(config, geometry);
+  const sediment = sedimentNutrients(config, geometry);
 
   const waterMicrobes: Partial<Record<MicrobeId, number>> = {};
   for (const id of MICROBE_ORDER) {
@@ -251,6 +268,8 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       food: emptyPool(),
       detritus: wild.detritus,
       inert: { cod: water.refractoryCod * volume, n: 0, p: 0 },
+      sedimentTan: sediment.n,
+      sedimentPo4: sediment.p,
       iceCover: false,
       snowOnIce: false,
     },
@@ -400,6 +419,7 @@ export function totalNitrogen(state: SimulationState): number {
   const w = state.water;
   return (
     w.tan +
+    w.sedimentTan +
     w.no2 +
     w.no3 +
     w.food.n +
@@ -416,6 +436,7 @@ export function totalPhosphorus(state: SimulationState): number {
   const w = state.water;
   return (
     w.po4 +
+    w.sedimentPo4 +
     w.food.p +
     w.detritus.p +
     w.inert.p +

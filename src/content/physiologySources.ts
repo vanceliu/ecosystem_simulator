@@ -156,4 +156,137 @@ export const PHYSIOLOGY_SOURCES = {
       'Williams & Martinez 2004, Stabilization of chaotic and non-permanent food-web dynamics (Eur. Phys. J. B 38:297): Hill exponent 1.2 in the functional response',
     url: 'https://doi.org/10.1140/epjb/e2004-00122-1',
   },
+  physiology_barrAquasoil: {
+    title:
+      'Barr Report 5(1), ADA Aqua Soil and Power Sand analysis: new Aqua Soil 263 mg/kg KCl-exchangeable NH4-N, Olsen-P 111 mg/kg; wetland clay 15.7 / 18.7; sandy pond 8.0 / 5.2 mg/kg',
+    url: 'https://barrreport.com/barr-report-resources/old-newsletters/ADA-Aqua-Soil-Power-Soil-Analysis-Barr-Report.pdf',
+  },
+  physiology_barko1988: {
+    title:
+      'Barko et al. 1988, Interactions between macrophyte growth and sediment nutrient availability (TR A-88-2): porewater holds < 15% of the exchangeable pool; unplanted losses 24% N, 26% P in 84 d',
+    url: 'https://apcrp.el.erdc.dren.mil/elpubs/pdf/tra88-2.pdf',
+  },
+  physiology_carignan1982: {
+    title:
+      'Carignan 1982, An empirical model to estimate the relative importance of roots in phosphorus uptake by aquatic macrophytes (CJFAS 39:243): P% = 99.8 / (1 + 2.66 (s/w)^−0.83)',
+    url: 'https://api.crossref.org/works/10.1139/f82-034',
+  },
+  physiology_christiansen2016: {
+    title:
+      'Christiansen, Andersen & Jensen 2016, Phosphate uptake kinetics for four submerged freshwater macrophytes (Aquat. Bot. 128:58): root Km 0.85–8.82 µmol/L',
+    url: 'https://findresearcher.sdu.dk/ws/files/128914716/Phosphate_uptake_kinetics_for_four_species_of_submerged_freshwater.pdf',
+  },
+  physiology_aqionDiffusion: {
+    title: 'aqion, Table of diffusion coefficients (PHREEQC): NH4+ 1.98, H2PO4− 0.846 × 10⁻⁹ m²/s',
+    url: 'https://www.aqion.de/sd/77?page=5',
+  },
+  physiology_aquasabiTropica: {
+    title: 'Aquasabi, Tropica Aquarium Soil 9 l: 9.00 kg per 9 L bag',
+    url: 'https://www.aquasabi.de/Tropica-Aquarium-Soil-9-l_1',
+  },
+  physiology_park2007: {
+    title:
+      'Park & Noguera 2007, Characterization of two ammonia-oxidizing bacteria isolated from low-DO reactors: strain ML1 K_O 0.24 mg/L',
+    url: 'https://pure.korea.ac.kr/en/publications/characterization-of-two-ammonia-oxidizing-bacteria-isolated-from-/',
+  },
+  physiology_kits2017: {
+    title:
+      'Kits et al. 2017, Kinetic analysis of a complete nitrifier reveals an oligotrophic lifestyle (Nature): N. inopinata K(NH4+) 0.84 µM',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5600814',
+  },
+  physiology_norris2021: {
+    title:
+      'Norris et al. 2021, Mechanistic model of nutrient uptake explains dichotomy between oligotrophic and copiotrophic bacteria',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC8168909',
+  },
+  physiology_evans2017: {
+    title:
+      'Evans et al. 2017, Variability in organic carbon reactivity across lake residence time and trophic gradients: humic DOM half-life months to years',
+    url: 'https://nora.nerc.ac.uk/id/eprint/518436/1/N518436PP.pdf',
+  },
+  physiology_li2017: {
+    title:
+      'Li, Wang & Huang 2017, Aerobic denitrifiers: characteristics and recent research: Paracoccus at ≈ 5.6 mg/L DO denitrifies at 50% of the anoxic rate',
+    url: 'https://download.atlantis-press.com/article/25877672.pdf',
+  },
+  physiology_songe2016: {
+    title:
+      'Songe et al. 2016, Saprolegnia diclina and S. parasitica infection strategies on Atlantic salmon eggs',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC4973706/',
+  },
+  physiology_wagner2015: {
+    title:
+      'Wagner et al. 2015, Light availability affects stream biofilm community composition and function: NPP:R ≈ 2',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC4950016',
+  },
+  physiology_baines2010: {
+    title:
+      'Baines et al. 2010, Regional differences in silicification of marine diatoms: silicification varies 6–10×',
+    url: 'https://www.us-ocb.org/wp-content/uploads/sites/43/2020/05/Baines_et_al_GBC_2010_176407.pdf',
+  },
+  physiology_nielsenBorum2008: {
+    title:
+      'Nielsen & Borum 2008, Why Stratiotes aloides mainly grows in CO2-supersaturated waters: HCO3− users reach 34% of maximum at air-equilibrium CO2; emersed leaves 3–5× submersed photosynthesis',
+    url: 'https://researchprofiles.ku.dk/da/publications/why-the-free-floating-macrophyte-emstratiotes-aloidesem-mainly-gr/',
+  },
+  physiology_rohrlack1999: {
+    title:
+      'Rohrlack et al. 1999, Role of microcystins in poisoning and food ingestion inhibition of Daphnia galeata: wild-type Microcystis cut ingestion by 75%',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC91088',
+  },
+  physiology_wang2018: {
+    title:
+      'Wang et al. 2018, Euglena gracilis growth under different trophic conditions: dark heterotrophic 0.70 vs phototrophic 0.90 d⁻¹',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5896972',
+  },
+  physiology_hatt2019: {
+    title:
+      'Hatt & Collado-Vides 2019, Organic and inorganic carbon content of Halimeda and Penicillus: inorganic:organic 80:20',
+    url: 'https://par.nsf.gov/servlets/purl/10122358',
+  },
+  physiology_jonesBerkelmans2010: {
+    title:
+      'Jones & Berkelmans 2010, Potential costs of acclimatization to a warmer climate: type D symbionts raise tolerance 1.0–1.5 °C',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC2862701',
+  },
+  physiology_cantin2009: {
+    title:
+      'Cantin et al. 2009, Juvenile corals acquire more carbon from high-performance symbionts: photosynthate to host doubled with C1 vs D',
+    url: 'https://researchonline.jcu.edu.au/4850/',
+  },
+  physiology_karakashian1975: {
+    title:
+      'Karakashian 1975, Symbiosis in Paramecium bursaria (NIES record): symbiotic cells grow and survive better when bacteria are scarce',
+    url: 'https://www.nies.go.jp/chiiki1/protoz/refere/id999/277.htm',
+  },
+  physiology_proctor2007: {
+    title:
+      'Proctor, Ligrone & Duckett 2007, Desiccation tolerance in the moss Polytrichum formosum: drying under 14 d barely affects survival',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC2802982',
+  },
+  physiology_zhang2020: {
+    title:
+      'Zhang et al. 2020, Photosynthetic performance of Liriope muscari under poplar forests: light saturation 364–493 vs poplar 800–1300 µmol m⁻² s⁻¹',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7191787',
+  },
+  physiology_monteiro2009: {
+    title:
+      'Monteiro, Zotz & Körner 2009, Tropical epiphytes in a CO2-rich world: C3 species grew 60% faster than CAM',
+    url: 'https://edoc.unibas.ch/8761/',
+  },
+  physiology_griffithsSmith1983: {
+    title:
+      'Griffiths & Smith 1983, Photosynthetic pathways in the Bromeliaceae of Trinidad: atmospheric CAM species in drier areas',
+    url: 'https://link.springer.com/article/10.1007/BF00379519',
+  },
+  physiology_osono2018: {
+    title:
+      'Osono et al. 2018, Litter quality control of decomposition by the white-rot fungus Trametes versicolor: 0.9–59.8% mass loss',
+    url: 'https://www.jstage.jst.go.jp/article/jfsc/129/0/129_644/_article/-char/ja',
+  },
+  physiology_nicholson2000: {
+    title:
+      'Nicholson et al. 2000, Resistance of Bacillus endospores to extreme environments: 75% of spores survive extreme desiccation',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC99004',
+  },
 } as const satisfies Record<string, Source>;

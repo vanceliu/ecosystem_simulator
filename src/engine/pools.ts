@@ -14,6 +14,8 @@ export const POOL = {
   ca: 'w.ca',
   alkalinity: 'w.alk',
   substrate: 'w.S',
+  sedimentTan: 'w.sedTan',
+  sedimentPo4: 'w.sedPo4',
   soilTan: 'l.tan',
   soilPo4: 'l.po4',
   soilSubstrate: 'l.S',
@@ -66,6 +68,8 @@ export function toPools(state: SimulationState): Pools {
     [POOL.po4, water.po4],
     [POOL.sio2, water.sio2],
     [POOL.ca, water.ca],
+    [POOL.sedimentTan, water.sedimentTan],
+    [POOL.sedimentPo4, water.sedimentPo4],
     [POOL.alkalinity, water.alkalinityMg],
     [POOL.substrate, water.substrateCod],
     [POOL.soilTan, state.land.soilTan],
@@ -105,6 +109,8 @@ export function fromPools(state: SimulationState, pools: Pools): void {
   water.po4 = pools.get(POOL.po4) ?? 0;
   water.sio2 = pools.get(POOL.sio2) ?? 0;
   water.ca = pools.get(POOL.ca) ?? 0;
+  water.sedimentTan = pools.get(POOL.sedimentTan) ?? 0;
+  water.sedimentPo4 = pools.get(POOL.sedimentPo4) ?? 0;
   water.alkalinityMg = pools.get(POOL.alkalinity) ?? 0;
   water.substrateCod = pools.get(POOL.substrate) ?? 0;
   state.land.soilTan = pools.get(POOL.soilTan) ?? 0;
@@ -126,18 +132,17 @@ export function fromPools(state: SimulationState, pools: Pools): void {
 
 /**
  * docs/04 §3.2 proton balance: alkalinity changes by one equivalent per mg N of ammonium
- * gained or nitrite/nitrate lost (ammonification, nitrification, denitrification, uptake).
+ * (water or substrate) gained or nitrite/nitrate lost.
  */
 export function withAlkalinity(process: Process): Process {
   const terms = process.stoichiometry;
-  const equivalents = (terms[POOL.tan] ?? 0) - (terms[POOL.no2] ?? 0) - (terms[POOL.no3] ?? 0);
-  if (equivalents === 0) return process;
-  return {
-    ...process,
-    stoichiometry: {
-      ...terms,
-      [POOL.alkalinity]:
-        (terms[POOL.alkalinity] ?? 0) + equivalents * STOICHIOMETRY.alkalinityPerNEquivalent.value,
-    },
-  };
+  const equivalents =
+    (terms[POOL.tan] ?? 0) +
+    (terms[POOL.sedimentTan] ?? 0) -
+    (terms[POOL.no2] ?? 0) -
+    (terms[POOL.no3] ?? 0);
+  if (equivalents !== 0)
+    terms[POOL.alkalinity] =
+      (terms[POOL.alkalinity] ?? 0) + equivalents * STOICHIOMETRY.alkalinityPerNEquivalent.value;
+  return process;
 }

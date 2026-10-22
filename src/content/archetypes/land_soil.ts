@@ -16,6 +16,13 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '苔',
     flags: ['photosynthetic'],
     trophicMode: 'photoautotroph',
+    specialised: {
+      desiccation: estimated(
+        0.1,
+        'drying under 14 d barely affects survival',
+        'physiology_proctor2007',
+      ),
+    },
     niche: 'land',
     kinetics: {
       muMax: estimated(
@@ -110,6 +117,18 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '草',
     flags: ['photosynthetic'],
     trophicMode: 'photoautotroph',
+    specialised: {
+      lightHalfSat: derived(
+        0.4,
+        'physiology_zhang2020',
+        'shade-tolerant saturation ≈ 430 vs sun plants ≈ 1050 µmol m⁻² s⁻¹',
+      ),
+      lightOptimum: derived(
+        0.4,
+        'physiology_zhang2020',
+        'shade-tolerant saturation ≈ 430 vs sun plants ≈ 1050 µmol m⁻² s⁻¹',
+      ),
+    },
     niche: 'land',
     kinetics: {
       muMax: derived(
@@ -223,6 +242,14 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '鳳梨',
     flags: ['photosynthetic'],
     trophicMode: 'photoautotroph',
+    specialised: {
+      growth: derived(0.63, 'physiology_monteiro2009', 'C3 species grew 60% faster: 1 / 1.6'),
+      humidityMinShift: estimated(
+        -20,
+        'atmospheric CAM species occupy the drier sites',
+        'physiology_griffithsSmith1983',
+      ),
+    },
     niche: 'land',
     kinetics: {
       muMax: derived(
@@ -333,6 +360,14 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '蕈',
     flags: [],
     trophicMode: 'decomposer',
+    specialised: {
+      litterDecay: estimated(
+        0.01,
+        'Trametes removes up to 60% of litter mass; 12-week run assumed: −ln(0.4) / 84',
+        'physiology_osono2018',
+      ),
+      growth: estimated(0.5, 'lignin specialists grow slower than other saprotrophs'),
+    },
     niche: 'soil',
     kinetics: {
       muMax: derived(
@@ -437,6 +472,13 @@ export const LAND_SOIL: Readonly<Partial<Record<ArchetypeGroups['land_soil'], Ar
     nounZh: '細菌',
     flags: [],
     trophicMode: 'decomposer',
+    specialised: {
+      desiccation: estimated(
+        0.02,
+        '75% of spores survive extreme desiccation that kills E. coli',
+        'physiology_nicholson2000',
+      ),
+    },
     niche: 'soil',
     kinetics: {
       muMax: derived(6.0, 'land_soil_reischke2014', 'community exponential growth 0.25 h⁻¹ × 24 h'),

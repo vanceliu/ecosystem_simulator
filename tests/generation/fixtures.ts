@@ -60,6 +60,7 @@ export const TEST_BIOMASS: Archetype = {
   salinityClasses: ['F', 'B', 'M'],
   vectors: ['background'],
   niche: 'surface',
+  specialised: {},
   kinetics: { muMax: e(1), halfSat: { nitrogen: e(0.02), phosphorus: e(0.003) } },
   latinStem: 'Navicul',
   nounZh: '矽藻',

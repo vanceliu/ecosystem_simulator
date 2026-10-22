@@ -3,17 +3,28 @@ export type Pools = Map<string, number>;
 /** What a process does to a cohort pool: eaten or killed individuals vs. lost body mass. */
 export type CohortEffect = 'remove' | 'shrink';
 
+/** A feeding edge for docs/04 §10; `share` is this prey's fraction of the process rate. */
+export interface FeedingEdge {
+  readonly prey: string;
+  readonly predator: string;
+  readonly share: number;
+}
+
+/** A cohort pool the process draws from and how that changes the cohort. */
+export interface CohortTouch {
+  readonly key: string;
+  readonly effect: CohortEffect;
+}
+
 /** A mass flux: `rate` units move along the stoichiometry; coefficients are per unit rate. */
 export interface Process {
   readonly name: string;
   readonly rate: number;
-  readonly stoichiometry: Readonly<Record<string, number>>;
+  readonly stoichiometry: Record<string, number>;
   /** species whose chemical exchange this process records (docs/04 §10) */
   readonly speciesId?: string;
-  /** feeding edge for docs/04 §10: prey node and predator species */
-  readonly feeding?: { readonly prey: string; readonly predator: string };
-  /** cohort pool key and how the process changes that cohort */
-  readonly cohort?: { readonly key: string; readonly effect: CohortEffect };
+  readonly feeding?: readonly FeedingEdge[];
+  readonly cohorts?: readonly CohortTouch[];
 }
 
 /** Adds a coefficient to a stoichiometry, summing terms that share a key. */

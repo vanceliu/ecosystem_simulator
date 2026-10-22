@@ -320,11 +320,63 @@ export interface BiomassKinetics {
   readonly phOptimum?: SourcedRange;
 }
 
+/**
+ * Effects of the `specialised` metabolism allele (docs/05 §2.3); multipliers apply to the
+ * archetype value, absent fields leave it unchanged.
+ */
+export interface SpecialisedEffects {
+  /** multiplier on muMax */
+  readonly growth?: Sourced;
+  /** multiplier on the O2 half-saturation */
+  readonly o2HalfSat?: Sourced;
+  /** multiplier on the substrate half-saturation */
+  readonly substrateHalfSat?: Sourced;
+  /** multiplier on the CO2 half-saturation */
+  readonly co2HalfSat?: Sourced;
+  /** multiplier on silica deposited per unit growth */
+  readonly silicaDemand?: Sourced;
+  /** multipliers on light half-saturation and optimum */
+  readonly lightHalfSat?: Sourced;
+  readonly lightOptimum?: Sourced;
+  /** multiplier on the attack rate predators achieve */
+  readonly predationExposure?: Sourced;
+  /** multiplier on desiccation mortality */
+  readonly desiccation?: Sourced;
+  /** percentage points added to humidityMin */
+  readonly humidityMinShift?: Sourced;
+  /** comammox: ammonium oxidised straight to nitrate; half-saturation in mg N/L */
+  readonly comammoxHalfSat?: Sourced;
+  /** comammox: rate as a multiple of muMax */
+  readonly comammoxRate?: Sourced;
+  /** share of the anoxic denitrification rate kept under oxic conditions */
+  readonly aerobicDenitrification?: Sourced;
+  /** d⁻¹ of the refractory (inert) pool turned into substrate at full activity */
+  readonly refractoryUse?: Sourced;
+  /** share of muMax gained by photosynthesis in light (photosynthetic symbionts or algae) */
+  readonly photosynthesis?: Sourced;
+  /** share of muMax gained on dissolved COD in darkness */
+  readonly darkHeterotrophy?: Sourced;
+  /** emersed leaves: CO2 never limits */
+  readonly aerialCo2?: true;
+  /** mg Ca deposited per mg COD formed */
+  readonly calciumPerCod?: Sourced;
+  /** d⁻¹ of the leaf-litter pool decomposed directly at full activity */
+  readonly litterDecay?: Sourced;
+  /** symbionts: °C added to the bleaching threshold and multiplier on photosynthate */
+  readonly bleachingShiftC?: Sourced;
+  readonly photosynthate?: Sourced;
+  /** parasitic: maximum consumption of egg biomass, d⁻¹ of own biomass */
+  readonly eggPredation?: Sourced;
+}
+
 export interface BiomassData extends ArchetypeDataBase {
   readonly kind: 'biomass';
   readonly trophicMode: TrophicMode;
   readonly niche: BiomassNiche;
   readonly kinetics: BiomassKinetics;
+  readonly specialised: SpecialisedEffects;
+  /** roots take nutrients from substrate porewater (docs/04 §5.3) */
+  readonly rooted?: true;
   /** biomass-type consumers: food kinds grazed */
   readonly prey?: readonly FoodKind[];
   /** eight alternatives for the morphology locus, Chinese labels */

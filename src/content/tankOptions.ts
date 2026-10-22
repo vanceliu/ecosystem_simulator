@@ -20,30 +20,63 @@ export interface SubstrateSpec {
   readonly surfacePerFloorPerCm: Sourced;
   /** added to the anoxic fraction */
   readonly anoxicBonus: Sourced;
+  /** g dry substrate per cm³ */
+  readonly bulkDensity: Sourced;
+  /** exchangeable NH4-N, mg per kg dry substrate, as bought */
+  readonly exchangeableN: Sourced;
+  /** plant-available P, mg per kg dry substrate, as bought */
+  readonly exchangeableP: Sourced;
 }
 
 export const SUBSTRATES: Readonly<Record<SubstrateId, SubstrateSpec>> = {
   bare: {
     surfacePerFloorPerCm: estimated(0, 'no substrate'),
     anoxicBonus: estimated(0, 'no substrate'),
+    bulkDensity: estimated(0, 'no substrate'),
+    exchangeableN: estimated(0, 'no substrate'),
+    exchangeableP: estimated(0, 'no substrate'),
   },
   fine_sand: {
     surfacePerFloorPerCm: estimated(1.0, 'grain surface reachable by biofilm'),
     anoxicBonus: estimated(0, 'docs/04 §4'),
+    bulkDensity: estimated(1.6, 'quartz sand'),
+    exchangeableN: estimated(0, 'washed inert sand'),
+    exchangeableP: estimated(0, 'washed inert sand'),
   },
   gravel: {
     surfacePerFloorPerCm: estimated(0.4, 'coarse grains'),
     anoxicBonus: estimated(0, 'docs/04 §4'),
+    bulkDensity: estimated(1.6, 'quartz gravel'),
+    exchangeableN: estimated(0, 'washed inert gravel'),
+    exchangeableP: estimated(0, 'washed inert gravel'),
   },
   aquasoil: {
     surfacePerFloorPerCm: estimated(1.0, 'porous granules'),
     anoxicBonus: estimated(0, 'docs/04 §4'),
+    bulkDensity: estimated(
+      0.8,
+      'packaged moist soil ≈ 1.0 kg/L with ≈ 20% moisture',
+      'physiology_aquasabiTropica',
+    ),
+    exchangeableN: measured(263, 'physiology_barrAquasoil'),
+    exchangeableP: measured(111, 'physiology_barrAquasoil'),
   },
   mud: {
     surfacePerFloorPerCm: estimated(1.0, 'fine sediment'),
     anoxicBonus: estimated(0.2, 'docs/04 §4'),
+    bulkDensity: estimated(1.2, 'wet clay-rich sediment'),
+    exchangeableN: measured(15.7, 'physiology_barrAquasoil'),
+    exchangeableP: measured(18.7, 'physiology_barrAquasoil'),
   },
 };
+
+/** Wild sand and gravel carry the exchangeable nutrients of an oligotrophic pond bed. */
+export const WILD_SEDIMENT_NUTRIENTS = {
+  /** mg NH4-N per kg dry */
+  exchangeableN: measured(8.0, 'physiology_barrAquasoil'),
+  /** mg P per kg dry */
+  exchangeableP: measured(5.2, 'physiology_barrAquasoil'),
+} as const;
 
 /** docs/04 §4: wild substrate carries burrowing fauna and an established anoxic layer. */
 export const WILD_SUBSTRATE_ANOXIC_BONUS = estimated(0.2, 'docs/04 §4 live sand');

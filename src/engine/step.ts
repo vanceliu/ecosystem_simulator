@@ -11,7 +11,13 @@ import {
   hourlyAmbientTemperature,
   naturalPpfd,
 } from './climate';
-import { feedingProcesses, foodNodes, predatorsOf, respirationProcesses } from './consumers';
+import {
+  feedingProcesses,
+  foodNodes,
+  indexFood,
+  predatorsOf,
+  respirationProcesses,
+} from './consumers';
 import { advanceClonalGenerations, dailyBiology } from './daily';
 import { applyCohortFluxes, removeExtinct, updateCohorts } from './demography';
 import { arrivals, release, SATURATION_LIMIT, SATURATION_RESUME } from './emergence';
@@ -30,6 +36,7 @@ import {
 import { mortalityProcesses } from './mortality';
 import { fromPools, populationKey, toPools, withAlkalinity } from './pools';
 import { producerProcesses } from './producers';
+import { sedimentExchange } from './sediment';
 import { recordFluxes, rollRecords, sampleHistory } from './records';
 import { mix32, rngForTick, type Rng } from './rng';
 import { cloneState, copyPopulations } from './state';
@@ -185,6 +192,7 @@ function integrate(
   );
   const processes = [
     ...leachingProcesses(pools, state.water.volumeL, dtDays),
+    ...sedimentExchange(context),
     ...waterMicrobeProcesses(context, biomass),
     ...landMicrobeProcesses(context, biomass),
     ...producerProcesses(context, biomass),
@@ -192,7 +200,7 @@ function integrate(
     ...feedingProcesses(
       context,
       predatorsOf(context, state.populations),
-      foodNodes(context, state.populations),
+      indexFood(foodNodes(context, state.populations)),
     ),
     ...respirationProcesses(context, state.populations),
     ...mortalityProcesses(context, state.populations),

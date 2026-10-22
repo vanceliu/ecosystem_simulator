@@ -82,7 +82,8 @@
 | `npm test` | 測試 |
 | `npm run lint` | 靜態檢查 |
 | `npm run format` / `format:check` | Prettier 格式化／檢查 |
-| `npm run sim -- --seed <n> --days <n> --preset <freshwater\|brackish\|marine>` | CLI 模擬，輸出文字紀錄（M3 起） |
+| `npm run sim -- --seed <n> --days <n> --preset <freshwater\|brackish\|marine\|rainforest>` | CLI 模擬，輸出文字紀錄；另有 `--feed`、`--light`、`--release`、`--every` |
+| `npm run bench -- --populations <n> --ticks <n>` | 效能量測（[04](docs/04-simulation-model.md) §9.2） |
 
 完成任務前必須通過：`npm run format:check`、`npm run lint`、`npm test`、`npm run build`。
 

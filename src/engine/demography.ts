@@ -117,9 +117,12 @@ export function applyCohortFluxes(
   const removed = new Map<string, number>();
   processes.forEach((process, index) => {
     const amount = effective[index] ?? 0;
-    if (process.cohort === undefined || process.cohort.effect !== 'remove' || amount <= 0) return;
-    const coefficient = -(process.stoichiometry[process.cohort.key] ?? 0);
-    removed.set(process.cohort.key, (removed.get(process.cohort.key) ?? 0) + amount * coefficient);
+    if (process.cohorts === undefined || amount <= 0) return;
+    for (const touch of process.cohorts) {
+      if (touch.effect !== 'remove') continue;
+      const coefficient = -(process.stoichiometry[touch.key] ?? 0);
+      removed.set(touch.key, (removed.get(touch.key) ?? 0) + amount * coefficient);
+    }
   });
   for (const population of state.populations) {
     if (population.kind !== 'cohort') continue;
@@ -307,11 +310,14 @@ function developStages(
     events.push(makeEvent('metamorphosis', tick, { speciesId: population.speciesId }));
 }
 
-/** Dissolves empty cohorts into detritus. */
+/** Dissolves empty cohorts and cohorts past the age limit (docs/04 §5.7) into detritus. */
 function pruneCohorts(state: SimulationState, population: CohortPopulation): void {
   const archetype = getArchetype(population.archetypeId);
+  const lifespan = phenotypeOf(population.speciesId).lifespan;
+  const limit =
+    archetype.lifeHistory.senescence === 'negligible' ? lifespan.capDays : lifespan.maxDays;
   population.cohorts = population.cohorts.filter((cohort) => {
-    if (cohort.count >= MIN_COHORT_COUNT) return true;
+    if (cohort.count >= MIN_COHORT_COUNT && ageDays(cohort, state.tick) < limit) return true;
     toDetritus(state, archetype, cohortCod(cohort), restingWaterFraction(archetype, cohort));
     return false;
   });

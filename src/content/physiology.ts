@@ -240,3 +240,39 @@ export const CORAL_SYMBIOSIS = {
   /** mg Ca deposited as skeleton per mg host COD formed */
   calciumPerHostCod: estimated(2.8, 'skeleton ≈ 10 × tissue dry mass, 40% Ca in CaCO3, ÷ 1.42'),
 } as const;
+
+/** docs/04 §5.3 sediment nutrients and rooted uptake */
+export const SEDIMENT = {
+  /** share of the exchangeable pool dissolved in porewater */
+  porewaterShare: derived(
+    0.15,
+    'physiology_barko1988',
+    'porewater held < 15% of the exchangeable pool; upper bound',
+  ),
+  /** porewater volume per substrate volume */
+  porosity: estimated(0.4, 'packed granular substrate'),
+  /** d⁻¹, porewater ↔ water exchange of ammonium */
+  exchangeTan: derived(
+    0.05,
+    'physiology_aqionDiffusion',
+    'D0 1.71 cm²/d × tortuosity 0.5 ÷ (path 2.5 cm × depth 5 cm) = 0.07, checked against Barko 1988 losses',
+  ),
+  /** d⁻¹, porewater ↔ water exchange of phosphate */
+  exchangePo4: derived(
+    0.03,
+    'physiology_aqionDiffusion',
+    'D0 0.73 cm²/d × tortuosity 0.5 ÷ (path 2.5 cm × depth 5 cm)',
+  ),
+  /** root uptake share = A / (1 + B × (porewater / water)^C) / 100 */
+  rootShareA: measured(99.8, 'physiology_carignan1982'),
+  rootShareB: measured(2.66, 'physiology_carignan1982'),
+  rootShareC: measured(-0.83, 'physiology_carignan1982'),
+  /** mg P/L of porewater at half-maximal root uptake */
+  rootHalfSatP: derived(
+    0.13,
+    'physiology_christiansen2016',
+    'median elodeid root Km ≈ 4.3 µmol/L × 0.03097 mg/µmol',
+  ),
+  /** mg N/L of porewater at half-maximal root uptake */
+  rootHalfSatN: estimated(0.3, 'no root NH4+ Km found; ≈ 20 µmol/L like phosphate'),
+} as const;

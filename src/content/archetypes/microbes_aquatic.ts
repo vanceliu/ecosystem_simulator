@@ -46,6 +46,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Nitroso',
     nounZh: '亞硝化菌',
     trophicMode: 'chemoautotroph',
+    specialised: {
+      o2HalfSat: derived(
+        0.5,
+        'physiology_park2007',
+        'low-DO isolate ML1 K_O 0.24 ÷ typical 0.45 mg/L',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: derived(0.71, 'bsm1', 'ASM1/BSM1 µA 0.5 d⁻¹ at ≈ 15 °C × 1.072^5'),
@@ -103,6 +110,18 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Nitrospir',
     nounZh: '硝化螺菌',
     trophicMode: 'chemoautotroph',
+    specialised: {
+      comammoxHalfSat: derived(
+        0.012,
+        'physiology_kits2017',
+        'Nitrospira inopinata K 0.84 µM total ammonium × 14.007 µg N/µmol',
+      ),
+      comammoxRate: estimated(
+        0.3,
+        'maximum activity described as comparatively low vs canonical ammonia oxidisers',
+        'physiology_kits2017',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: derived(
@@ -163,6 +182,18 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Pseudomon',
     nounZh: '異營菌',
     trophicMode: 'decomposer',
+    specialised: {
+      substrateHalfSat: estimated(
+        0.1,
+        'oligotrophic high-affinity uptake; model gap far larger, conservative',
+        'physiology_norris2021',
+      ),
+      refractoryUse: derived(
+        0.002,
+        'physiology_evans2017',
+        'humic DOM half-life months to years: ln2 / (90–1095 d), geometric middle',
+      ),
+    },
     niche: 'water_column',
     kinetics: {
       muMax: derived(5.66, 'bsm1', 'ASM1/BSM1 µH 4.0 d⁻¹ at ≈ 15 °C × 1.072^5'),
@@ -218,6 +249,9 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Paracocc',
     nounZh: '脫氮菌',
     trophicMode: 'decomposer',
+    specialised: {
+      aerobicDenitrification: measured(0.5, 'physiology_li2017'),
+    },
     niche: 'sediment',
     kinetics: {
       muMax: derived(4.53, 'bsm1', 'ASM1/BSM1 µH 4.0 × anoxic ηg 0.8 at ≈ 15 °C × 1.072^5'),
@@ -272,6 +306,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Saproleg',
     nounZh: '水黴',
     trophicMode: 'decomposer',
+    specialised: {
+      eggPredation: estimated(
+        0.5,
+        'eggs infected within a 10-day challenge; no time course given',
+        'physiology_songe2016',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: estimated(
@@ -351,6 +392,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Zoogloe',
     nounZh: '菌膜',
     trophicMode: 'decomposer',
+    specialised: {
+      photosynthesis: estimated(
+        0.5,
+        'biofilm net autotrophic (NPP:R ≈ 2) even in shade',
+        'physiology_wagner2015',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: measured(6.0, 'microbes_aquatic_henze1987Table'),
@@ -412,6 +460,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Navicul',
     nounZh: '矽藻',
     trophicMode: 'photoautotroph',
+    specialised: {
+      silicaDemand: derived(
+        0.4,
+        'physiology_baines2010',
+        'silicification varies 6–10×; lightly silicified types ≈ 1/2.5 of typical',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: measured(0.88, 'physiology_affan2007'),
@@ -490,6 +545,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Cladophor',
     nounZh: '綠藻',
     trophicMode: 'photoautotroph',
+    specialised: {
+      co2HalfSat: estimated(
+        0.3,
+        'HCO3− users keep 34% of maximum photosynthesis at air-equilibrium CO2',
+        'physiology_nielsenBorum2008',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: measured(1.08, 'physiology_auerCanale1982'),
@@ -583,6 +645,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Oscillat',
     nounZh: '藍綠菌',
     trophicMode: 'photoautotroph',
+    specialised: {
+      predationExposure: derived(
+        0.25,
+        'physiology_rohrlack1999',
+        'wild-type Microcystis cut Daphnia ingestion by 75% vs reference food',
+      ),
+    },
     niche: 'surface',
     kinetics: {
       muMax: derived(0.81, 'physiology_bowie1985', 'geometric mean of blue-green 0.41 and 1.6 d⁻¹'),
@@ -664,6 +733,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Chlorell',
     nounZh: '浮游藻',
     trophicMode: 'photoautotroph',
+    specialised: {
+      darkHeterotrophy: estimated(
+        0.5,
+        'dark/light growth 0.78 (Euglena) and 0.23 (Ochromonas)',
+        'physiology_wang2018',
+      ),
+    },
     niche: 'water_column',
     kinetics: {
       muMax: derived(
@@ -744,6 +820,15 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Egeri',
     nounZh: '水草',
     trophicMode: 'photoautotroph',
+    specialised: {
+      aerialCo2: true,
+      growth: estimated(
+        2,
+        'emersed leaves photosynthesise 3–5× submersed; growth gain smaller',
+        'physiology_nielsenBorum2008',
+      ),
+    },
+    rooted: true,
     niche: 'water_floor',
     kinetics: {
       muMax: measured(0.045, 'physiology_madsen1995'),
@@ -820,6 +905,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Caulerp',
     nounZh: '海藻',
     trophicMode: 'photoautotroph',
+    specialised: {
+      calciumPerCod: derived(
+        1.13,
+        'physiology_hatt2019',
+        'CaCO3:organic 80:20 = 4 × 0.4 Ca = 1.6 mg Ca per mg dry ÷ 1.42 COD',
+      ),
+    },
     niche: 'water_floor',
     kinetics: {
       muMax: derived(
@@ -918,6 +1010,14 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Symbiodin',
     nounZh: '蟲黃藻',
     trophicMode: 'symbiont',
+    specialised: {
+      bleachingShiftC: derived(1.25, 'physiology_jonesBerkelmans2010', 'midpoint of 1.0–1.5 °C'),
+      photosynthate: derived(
+        0.5,
+        'physiology_cantin2009',
+        'photosynthate to host doubled with C1 vs D',
+      ),
+    },
     niche: 'host',
     kinetics: {
       muMax: derived(
@@ -1009,6 +1109,13 @@ export const MICROBES_AQUATIC: Readonly<
     latinStem: 'Parameci',
     nounZh: '纖毛蟲',
     trophicMode: 'consumer',
+    specialised: {
+      photosynthesis: estimated(
+        0.15,
+        'symbiotic Paramecium bursaria survive and grow without bacteria; no rate given',
+        'physiology_karakashian1975',
+      ),
+    },
     niche: 'water_column',
     prey: ['bacteria'],
     kinetics: {

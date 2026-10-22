@@ -1,7 +1,9 @@
 import { getArchetype } from '../content/archetypes/index';
 import { CORAL_SYMBIOSIS } from '../content/physiology';
 import { waterConcentration, type BioContext } from './bioContext';
-import { bodyRatios, cohortCod, phenotypeOf } from './biota';
+import { bodyRatios, cohortCod, effect, phenotypeOf, specialisedOf } from './biota';
+import { sampleGenotype } from '../generation/index';
+import { createRng, hashSeed } from './rng';
 import { addTerm, type Process } from './fluxes';
 import { POOL, gainKey } from './pools';
 import { lightFactor } from './producers';
@@ -18,6 +20,26 @@ export const CALCIUM_SUFFICIENT_MG_L = 350;
 export const CALCIUM_LIMITED_FACTOR = 0.2;
 /** CaCO3 deposition lowers alkalinity (as CaCO3) by this much per mg Ca */
 const ALKALINITY_PER_CA = 100.09 / 40.08;
+
+const symbiontCache = new Map<string, string>();
+
+/** Symbiont genotype carried by a coral species; fixed per coral species. */
+export function symbiontOf(coralSpeciesId: string): string | null {
+  const cached = symbiontCache.get(coralSpeciesId);
+  if (cached !== undefined) return cached;
+  const symbiont = sampleGenotype(
+    getArchetype('zooxanthellae'),
+    createRng(hashSeed(coralSpeciesId)),
+  );
+  if (symbiont !== null) symbiontCache.set(coralSpeciesId, symbiont);
+  return symbiont;
+}
+
+function symbiontEffects(coralSpeciesId: string) {
+  const symbiont = symbiontOf(coralSpeciesId);
+  const archetype = getArchetype('zooxanthellae');
+  return symbiont === null ? {} : specialisedOf(archetype, phenotypeOf(symbiont));
+}
 
 export const isSymbiontHost = (population: Population): population is CohortPopulation =>
   population.kind === 'cohort' &&
@@ -59,6 +81,7 @@ export function symbiosisProcesses(
       fNutrient *
       calcium *
       CORAL_SYMBIOSIS.photosynthatePerHostCod.value *
+      effect(symbiontEffects(population.speciesId).photosynthate) *
       biomass *
       context.dtDays;
     if (!(rate > 0)) continue;
@@ -97,7 +120,9 @@ export function updateSymbionts(
   for (const population of populations) {
     if (!isSymbiontHost(population) || population.symbiontDensity === null) continue;
     const optimum = phenotypeOf(population.speciesId).temperatureC.opt;
-    const stressed = ppfd > bleachingLight || waterTemperatureC > optimum + BLEACHING_EXCESS_C;
+    const shift = symbiontEffects(population.speciesId).bleachingShiftC?.value ?? 0;
+    const stressed =
+      ppfd > bleachingLight || waterTemperatureC > optimum + BLEACHING_EXCESS_C + shift;
     const before = population.symbiontDensity;
     population.symbiontDensity = stressed
       ? before * (1 - BLEACHING_LOSS_PER_TICK)

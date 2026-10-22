@@ -114,6 +114,10 @@ export interface WaterState {
   food: OrganicPool;
   detritus: OrganicPool;
   inert: OrganicPool;
+  /** exchangeable ammonium in the substrate, mg N */
+  sedimentTan: number;
+  /** exchangeable phosphate in the substrate, mg P */
+  sedimentPo4: number;
   iceCover: boolean;
   snowOnIce: boolean;
 }

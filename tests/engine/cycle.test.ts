@@ -7,31 +7,40 @@ import { peakDay, runDays } from './simulation';
 const DAYS = 70;
 /** docs/06 §6 judges cycle timing by the median over seeds */
 const TIMING_SEEDS = ['cycle-seed', 'a', 'b', 'c', 'd'];
-const result = runDays(CYCLING_TANK, 'cycle-seed', DAYS, DAILY_FEED_MG, FEED_HOUR);
+const runs = TIMING_SEEDS.map((seed) =>
+  runDays(CYCLING_TANK, seed, DAYS, DAILY_FEED_MG, FEED_HOUR),
+);
+const result = runs[0] ?? runDays(CYCLING_TANK, 'cycle-seed', DAYS, DAILY_FEED_MG, FEED_HOUR);
 
-function completionDay(seed: string): number {
-  const run =
-    seed === 'cycle-seed' ? result : runDays(CYCLING_TANK, seed, DAYS, DAILY_FEED_MG, FEED_HOUR);
+function completionDay(run: (typeof runs)[number]): number {
   const complete = run.events.find((event) => event.type === 'cycle_complete');
   return complete === undefined ? Infinity : complete.tick / 24;
 }
 
+/** The run whose completion day is the median over the timing seeds. */
+const medianRun = [...runs].sort((a, b) => completionDay(a) - completionDay(b))[
+  Math.floor(runs.length / 2)
+];
+
 describe('fishless cycle (docs/06 §4, docs/00 M1)', () => {
   it('completes the nitrogen cycle within 4–8 game weeks (median over seeds)', () => {
-    const days = TIMING_SEEDS.map(completionDay).sort((a, b) => a - b);
-    const median = days[Math.floor(days.length / 2)] ?? Infinity;
-    expect(median).toBeGreaterThanOrEqual(28);
-    expect(median).toBeLessThanOrEqual(56);
-  }, 60_000);
-
-  it('peaks ammonia before nitrite', () => {
-    expect(peakDay(result.daily, 'tanMgL')).toBeLessThan(peakDay(result.daily, 'no2MgL'));
+    const day = medianRun === undefined ? Infinity : completionDay(medianRun);
+    expect(day).toBeGreaterThanOrEqual(28);
+    expect(day).toBeLessThanOrEqual(56);
   });
 
-  it('keeps oxidising ammonia once cycled', () => {
-    const last = result.daily.at(-1);
-    const volume = result.final.water.volumeL;
-    expect(result.final.tracking.nitrifiedN / volume).toBeGreaterThanOrEqual(
+  it('peaks ammonia before nitrite in the median run', () => {
+    expect(medianRun).toBeDefined();
+    if (medianRun === undefined) return;
+    expect(peakDay(medianRun.daily, 'tanMgL')).toBeLessThan(peakDay(medianRun.daily, 'no2MgL'));
+  });
+
+  it('keeps oxidising ammonia once cycled in the median run', () => {
+    expect(medianRun).toBeDefined();
+    if (medianRun === undefined) return;
+    const last = medianRun.daily.at(-1);
+    const volume = medianRun.final.water.volumeL;
+    expect(medianRun.final.tracking.nitrifiedN / volume).toBeGreaterThanOrEqual(
       CYCLE_MIN_TOTAL_NITRIFIED_MG_L,
     );
     expect(last?.tanMgL ?? 1).toBeLessThan(0.25);

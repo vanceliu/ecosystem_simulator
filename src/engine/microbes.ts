@@ -1,12 +1,12 @@
-import type { Archetype, BiomassData } from '../content/archetype';
+import type { Archetype, BiomassData, SpecialisedEffects } from '../content/archetype';
 import { getArchetype } from '../content/archetypes/index';
 import { BACKGROUND_SEEDING, MICROBIAL_PROCESSES, TEMPERATURE_THETA } from '../content/microbes';
 import type { Sourced } from '../content/sourced';
 import { FOOD_COMPOSITION, STOICHIOMETRY } from '../content/stoichiometry';
 import type { Phenotype } from '../generation/index';
 import { landDensity, waterConcentration, type BioContext } from './bioContext';
-import { bodyRatios, phenotypeOf } from './biota';
-import { microbialCapacity } from './capacity';
+import { bodyRatios, effect, phenotypeOf, specialisedOf } from './biota';
+import { MICROBIAL_CAPACITY_GROUP, microbialCapacity } from './capacity';
 import { crowdingFactor } from './crowding';
 import { addTerm, type Pools, type Process } from './fluxes';
 import {
@@ -14,6 +14,7 @@ import {
   POOL,
   WATER_DETRITUS,
   WATER_FOOD,
+  WATER_INERT,
   populationKey,
   type OrganicKeys,
 } from './pools';
@@ -70,6 +71,7 @@ interface Microbe {
   readonly population: BiomassPopulation;
   readonly archetype: Archetype & BiomassData;
   readonly phenotype: Phenotype;
+  readonly effects: SpecialisedEffects;
   readonly key: string;
 }
 
@@ -79,10 +81,12 @@ function microbesOf(populations: readonly BiomassPopulation[]): Microbe[] {
     .map((population) => {
       const archetype = getArchetype(population.archetypeId);
       if (archetype.kind !== 'biomass') throw new Error(`${archetype.id} is not biomass`);
+      const phenotype = phenotypeOf(population.speciesId);
       return {
         population,
         archetype,
-        phenotype: phenotypeOf(population.speciesId),
+        phenotype,
+        effects: specialisedOf(archetype, phenotype),
         key: populationKey(population.id),
       };
     });
@@ -95,6 +99,7 @@ function maxRate(microbe: Microbe, temperatureC: number): number {
   return (
     microbe.archetype.kinetics.muMax.value *
     microbe.phenotype.growthMultiplier *
+    effect(microbe.effects.growth) *
     temperatureFactor(temperatureC)
   );
 }
@@ -183,6 +188,44 @@ function particulateGrowth(
   return terms;
 }
 
+/** docs/05 §2.3: specialist activity reaches 1 when the strain holds this share of its habitat capacity */
+export const SPECIALIST_ACTIVITY_REFERENCE = 0.01;
+
+function specialistActivity(context: BioContext, microbe: Microbe): number {
+  const group = MICROBIAL_CAPACITY_GROUP[microbe.archetype.id];
+  const capacity = group === undefined ? 0 : microbialCapacity(group, context.space);
+  return capacity > 0
+    ? Math.min(1, microbe.population.cod / (SPECIALIST_ACTIVITY_REFERENCE * capacity))
+    : 0;
+}
+
+/** docs/05 §2.3 oligotrophs: refractory (inert) COD made available as dissolved substrate. */
+function refractoryRelease(context: BioContext, microbe: Microbe, theta: number): Process[] {
+  const pools = context.pools;
+  const inert = pools.get(WATER_INERT.cod) ?? 0;
+  const perDay = microbe.effects.refractoryUse?.value ?? 0;
+  if (inert <= 0 || perDay <= 0) return [];
+  const rate = perDay * theta * specialistActivity(context, microbe) * inert * context.dtDays;
+  if (!(rate > 0)) return [];
+  const nRatio = (pools.get(WATER_INERT.n) ?? 0) / inert;
+  const pRatio = (pools.get(WATER_INERT.p) ?? 0) / inert;
+  return [
+    {
+      name: `refractory:${microbe.population.id}`,
+      rate,
+      stoichiometry: {
+        [WATER_INERT.cod]: -1,
+        [WATER_INERT.n]: -nRatio,
+        [WATER_INERT.p]: -pRatio,
+        [POOL.substrate]: 1,
+        [POOL.tan]: nRatio,
+        [POOL.po4]: pRatio,
+      },
+      speciesId: microbe.population.speciesId,
+    },
+  ];
+}
+
 /** Aquatic microbial processes, docs/04 §5.2; rates are mg moved during dtDays. */
 export function waterMicrobeProcesses(
   context: BioContext,
@@ -219,7 +262,12 @@ export function waterMicrobeProcesses(
     const muMax = maxRate(microbe, temperatureC) * microbePh(microbe, context.ph);
     if (muMax <= 0) continue;
     const crowd = crowdingFactor(context.occupancy, microbe.archetype.id);
-    const o2Limit = monod(o2, halfSat(microbe, kinetics.halfSat.o2));
+    const o2Limit = monod(
+      o2,
+      halfSat(microbe, kinetics.halfSat.o2) * effect(microbe.effects.o2HalfSat),
+    );
+    const substrateHalfSat =
+      halfSat(microbe, kinetics.halfSat.substrate) * effect(microbe.effects.substrateHalfSat);
     const yieldCoefficient = yieldOf(microbe);
     let growth = 0;
     let stoichiometry: Record<string, number> = {};
@@ -227,18 +275,14 @@ export function waterMicrobeProcesses(
     switch (microbe.archetype.id) {
       case 'heterotroph':
       case 'biofilm':
-        growth = muMax * monod(substrate, halfSat(microbe, kinetics.halfSat.substrate)) * o2Limit;
+        growth = muMax * monod(substrate, substrateHalfSat) * o2Limit;
         stoichiometry = aerobicGrowth(microbe, yieldCoefficient);
+        if (microbe.effects.refractoryUse !== undefined)
+          processes.push(...refractoryRelease(context, microbe, theta));
         break;
       case 'aob': {
         const ratios = bodyRatios(microbe.archetype);
-        growth =
-          muMax *
-          monod(
-            waterConcentration(context, POOL.tan),
-            halfSat(microbe, kinetics.halfSat.substrate),
-          ) *
-          o2Limit;
+        growth = muMax * monod(waterConcentration(context, POOL.tan), substrateHalfSat) * o2Limit;
         const oxidisedN = 1 / yieldCoefficient;
         stoichiometry = {
           [POOL.tan]: -(oxidisedN + ratios.n),
@@ -252,13 +296,7 @@ export function waterMicrobeProcesses(
       }
       case 'nob': {
         const ratios = bodyRatios(microbe.archetype);
-        growth =
-          muMax *
-          monod(
-            waterConcentration(context, POOL.no2),
-            halfSat(microbe, kinetics.halfSat.substrate),
-          ) *
-          o2Limit;
+        growth = muMax * monod(waterConcentration(context, POOL.no2), substrateHalfSat) * o2Limit;
         const oxidisedN = 1 / yieldCoefficient;
         stoichiometry = {
           [POOL.no2]: -(oxidisedN + ratios.n),
@@ -267,16 +305,44 @@ export function waterMicrobeProcesses(
           [POOL.no3]: oxidisedN,
           [microbe.key]: 1,
         };
+        const comammox = microbe.effects.comammoxHalfSat?.value;
+        if (comammox !== undefined) {
+          const complete =
+            muMax *
+            effect(microbe.effects.comammoxRate) *
+            monod(waterConcentration(context, POOL.tan), comammox) *
+            o2Limit *
+            crowd;
+          if (complete > 0)
+            processes.push({
+              name: `comammox:${microbe.population.id}`,
+              rate: complete * microbe.population.cod * dtDays,
+              stoichiometry: {
+                [POOL.tan]: -(oxidisedN + ratios.n),
+                [POOL.o2]: -(
+                  (STOICHIOMETRY.o2PerNByAob.value + STOICHIOMETRY.o2PerNByNob.value) * oxidisedN -
+                  1
+                ),
+                [POOL.po4]: -ratios.p,
+                [POOL.no3]: oxidisedN,
+                [POOL.nitrified]: oxidisedN,
+                [microbe.key]: 1,
+              },
+              speciesId: microbe.population.speciesId,
+            });
+        }
         break;
       }
       case 'denitrifier': {
         const ratios = bodyRatios(microbe.archetype);
-        const anoxia =
+        const anoxia = Math.max(
           context.space.geometry.anoxicFraction *
-          Math.max(0, 1 - o2 / Math.max(context.o2SaturationMgL, 1e-6));
+            Math.max(0, 1 - o2 / Math.max(context.o2SaturationMgL, 1e-6)),
+          microbe.effects.aerobicDenitrification?.value ?? 0,
+        );
         growth =
           muMax *
-          monod(substrate, halfSat(microbe, kinetics.halfSat.substrate)) *
+          monod(substrate, substrateHalfSat) *
           monod(waterConcentration(context, POOL.no3), MICROBIAL_PROCESSES.nitrateHalfSat.value) *
           anoxia;
         const reducedN = (1 - yieldCoefficient) / (DENITRIFICATION_COD_PER_N * yieldCoefficient);
@@ -295,7 +361,7 @@ export function waterMicrobeProcesses(
         const organic =
           waterConcentration(context, WATER_DETRITUS.cod) +
           waterConcentration(context, WATER_FOOD.cod);
-        growth = muMax * monod(organic, halfSat(microbe, kinetics.halfSat.substrate)) * o2Limit;
+        growth = muMax * monod(organic, substrateHalfSat) * o2Limit;
         const detritus = pools.get(WATER_DETRITUS.cod) ?? 0;
         const food = pools.get(WATER_FOOD.cod) ?? 0;
         const total = detritus + food;
@@ -366,6 +432,26 @@ export function landMicrobeProcesses(
   const substratePerArea = landDensity(context, POOL.soilSubstrate);
   for (const microbe of soilMicrobes) {
     if (microbe.population.cod <= 0) continue;
+    const litterPerDay = microbe.effects.litterDecay?.value ?? 0;
+    const litter = pools.get(LAND_LITTER.cod) ?? 0;
+    if (litterPerDay > 0 && litter > 0) {
+      const nRatio = (pools.get(LAND_LITTER.n) ?? 0) / litter;
+      const pRatio = (pools.get(LAND_LITTER.p) ?? 0) / litter;
+      processes.push({
+        name: `white_rot:${microbe.population.id}`,
+        rate:
+          litterPerDay * theta * moisture * specialistActivity(context, microbe) * litter * dtDays,
+        stoichiometry: {
+          [LAND_LITTER.cod]: -1,
+          [LAND_LITTER.n]: -nRatio,
+          [LAND_LITTER.p]: -pRatio,
+          [POOL.soilSubstrate]: 1,
+          [POOL.soilTan]: nRatio,
+          [POOL.soilPo4]: pRatio,
+        },
+        speciesId: microbe.population.speciesId,
+      });
+    }
     const yieldCoefficient = yieldOf(microbe);
     const ratios = bodyRatios(microbe.archetype);
     const growth =

@@ -62,8 +62,10 @@ export function recordFluxes(
   processes.forEach((process, index) => {
     const amount = effective[index] ?? 0;
     if (amount <= 0) return;
-    if (process.feeding !== undefined)
-      addTo(records.feeding, `${process.feeding.prey}>${process.feeding.predator}`, bucket, amount);
+    if (process.feeding !== undefined) {
+      for (const edge of process.feeding)
+        addTo(records.feeding, `${edge.prey}>${edge.predator}`, bucket, amount * edge.share);
+    }
     if (process.speciesId === undefined) return;
     for (const [key, coefficient] of Object.entries(process.stoichiometry)) {
       const kinds = CHEM_KEYS[key];

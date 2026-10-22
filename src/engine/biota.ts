@@ -1,4 +1,5 @@
-import type { Archetype, Habitat } from '../content/archetype';
+import type { Archetype, Habitat, SpecialisedEffects } from '../content/archetype';
+import type { Sourced } from '../content/sourced';
 import { getArchetype } from '../content/archetypes/index';
 import { BODY_COMPOSITION } from '../content/physiology';
 import { STOICHIOMETRY } from '../content/stoichiometry';
@@ -31,6 +32,25 @@ const WATER_HABITATS: ReadonlySet<Habitat> = new Set([
 ]);
 
 const phenotypeCache = new Map<GenotypeCode, Phenotype>();
+const NO_EFFECTS: SpecialisedEffects = {};
+
+/** docs/05 §2.3 effects of the specialised metabolism allele; empty for other species. */
+export function specialisedOf(archetype: Archetype, phenotype: Phenotype): SpecialisedEffects {
+  return archetype.kind === 'biomass' && phenotype.specialisedMetabolism
+    ? archetype.specialised
+    : NO_EFFECTS;
+}
+
+/** Multiplier carried by an optional effect; 1 when absent. */
+export const effect = (value: Sourced | undefined): number => value?.value ?? 1;
+
+/** humidityMin after the specialised shift, %. */
+export function humidityMinOf(archetype: Archetype, phenotype: Phenotype): number | undefined {
+  const base = phenotype.humidityMinPercent;
+  if (base === undefined) return undefined;
+  const shift = specialisedOf(archetype, phenotype).humidityMinShift?.value ?? 0;
+  return Math.min(95, Math.max(10, base + shift));
+}
 
 export function archetypeOf(speciesId: GenotypeCode): Archetype {
   return getArchetype(parseGenotypeCode(speciesId).archetypeId);
@@ -125,6 +145,7 @@ export function environmentFactor(
   phenotype: Phenotype,
   temperatureC: number,
   w: number,
+  humidityMinPercent: number | undefined = phenotype.humidityMinPercent,
 ): number {
   let factor = toleranceFactor(temperatureC, phenotype.temperatureC);
   if (w > 0 && state.water.volumeL > 0) {
@@ -134,6 +155,6 @@ export function environmentFactor(
       phResponse(waterPh(state), phenotype.ph);
     factor *= w >= 1 ? aquatic : Math.max(aquatic, 1 - w);
   }
-  if (w < 1) factor *= humidityFactor(state.land.humidity, phenotype.humidityMinPercent);
+  if (w < 1) factor *= humidityFactor(state.land.humidity, humidityMinPercent);
   return factor;
 }

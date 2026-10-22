@@ -9,8 +9,11 @@ import {
   bodyRatios,
   bodyTemperature,
   cohortCod,
+  effect,
   environmentFactor,
+  humidityMinOf,
   phenotypeOf,
+  specialisedOf,
   TICKS_PER_DAY,
   waterFraction,
 } from './biota';
@@ -84,10 +87,15 @@ function habitatStress(
   if (w >= 1 && archetype.zone !== 'W' && !context.media.hasWater) stress += STRESS.noWater;
   const needsLand = archetype.zone === 'T' || archetype.flags.includes('needs_land');
   if (adult && needsLand && !context.media.hasLand) stress += STRESS.noLand;
-  if (w < 1 && context.media.hasLand && phenotype.humidityMinPercent !== undefined) {
+  const humidityMin = humidityMinOf(archetype, phenotype);
+  if (w < 1 && context.media.hasLand && humidityMin !== undefined) {
     const humidity = context.state.land.humidity;
-    if (humidity < phenotype.humidityMinPercent)
-      stress += STRESS.desiccation * (1 - humidity / phenotype.humidityMinPercent) * (1 - w);
+    if (humidity < humidityMin)
+      stress +=
+        STRESS.desiccation *
+        effect(specialisedOf(archetype, phenotype).desiccation) *
+        (1 - humidity / humidityMin) *
+        (1 - w);
   }
   if (
     archetype.flags.includes('needs_uvb') &&
@@ -158,7 +166,15 @@ function biomassDeath(context: BioContext, population: BiomassPopulation): Proce
   let stress =
     waterStress(context, archetype, phenotype, w) +
     habitatStress(context, archetype, phenotype, w, true);
-  if (environmentFactor(context.state, phenotype, temperature, w) <= 0)
+  if (
+    environmentFactor(
+      context.state,
+      phenotype,
+      temperature,
+      w,
+      humidityMinOf(archetype, phenotype),
+    ) <= 0
+  )
     stress += STRESS.outOfTolerance;
   const perTick =
     biomassDailyLoss(context, population, archetype, phenotype) / TICKS_PER_DAY + stress;
@@ -249,7 +265,7 @@ function cohortDeaths(context: BioContext, population: CohortPopulation): Proces
         rate: cod * fraction,
         stoichiometry: terms,
         speciesId: population.speciesId,
-        cohort: { key, effect: 'remove' },
+        cohorts: [{ key, effect: 'remove' }],
       });
     }
     if (escapes && adult && fraction < 1) {
@@ -262,7 +278,7 @@ function cohortDeaths(context: BioContext, population: CohortPopulation): Proces
         rate: cod * (1 - fraction) * fractionFor(STRESS.escape, context.dtDays),
         stoichiometry: terms,
         speciesId: population.speciesId,
-        cohort: { key, effect: 'remove' },
+        cohorts: [{ key, effect: 'remove' }],
       });
     }
     const moduleDays = archetype.lifeHistory.moduleLifespanDays?.value;
@@ -277,7 +293,7 @@ function cohortDeaths(context: BioContext, population: CohortPopulation): Proces
         rate: (cod * (1 - fraction) * context.dtDays) / moduleDays,
         stoichiometry: terms,
         speciesId: population.speciesId,
-        cohort: { key, effect: 'shrink' },
+        cohorts: [{ key, effect: 'shrink' }],
       });
     }
   });

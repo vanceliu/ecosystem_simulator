@@ -30,7 +30,7 @@ import {
   type EnclosureProblem,
   type Space,
 } from './capacity';
-import { foodAvailability, foodNodes, predatorOf } from './consumers';
+import { foodAvailability, foodNodes, indexFood, predatorOf } from './consumers';
 import { makeEvent } from './events';
 import { creditImport, foundBiomass, foundCohort, registerSpecies } from './founding';
 import { seedingCod } from './microbes';
@@ -256,7 +256,7 @@ export function suitability(
     food =
       predator === null
         ? 0
-        : foodAvailability(context, predator, foodNodes(context, state.populations));
+        : foodAvailability(context, predator, indexFood(foodNodes(context, state.populations)));
   } else if (archetype.trophicMode === 'consumer') {
     const predator = predatorOf(context, {
       ...candidate(speciesId, state.tick),
@@ -268,7 +268,7 @@ export function suitability(
     food =
       predator === null
         ? 0
-        : foodAvailability(context, predator, foodNodes(context, state.populations));
+        : foodAvailability(context, predator, indexFood(foodNodes(context, state.populations)));
   }
   return fEnv * food;
 }
