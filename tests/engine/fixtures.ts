@@ -8,6 +8,7 @@ import type {
 } from '../../src/content/location';
 import type { LocationConfig, Placement, TankConfig } from '../../src/engine/types';
 import { recommendTankConfig, representativeLocation } from '../../src/game/setup';
+import { params } from '../params';
 
 export interface LocationSpec {
   readonly zone: LatitudeZone;
@@ -19,7 +20,7 @@ export interface LocationSpec {
 }
 
 export function location(spec: LocationSpec): LocationConfig {
-  return representativeLocation({
+  return representativeLocation(params, {
     hemisphere: 'north',
     latitudeZone: spec.zone,
     altitudeBand: spec.altitude ?? 'lowland',
@@ -35,7 +36,7 @@ export function tank(
   placement: Placement,
   overrides: Partial<TankConfig> = {},
 ): TankConfig {
-  return { ...recommendTankConfig(location(spec), placement), ...overrides };
+  return { ...recommendTankConfig(params, location(spec), placement), ...overrides };
 }
 
 /** Indoor tropical stream aquarium heated to 25 °C, filled from the tap. */

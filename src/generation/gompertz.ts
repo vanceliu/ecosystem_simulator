@@ -1,6 +1,4 @@
-/** docs/04 §5.7 calibration targets */
-export const SURVIVAL_AT_TYPICAL = 0.5;
-export const SURVIVAL_AT_MAX = 0.01;
+import type { ParameterSet } from '../content/parameters';
 
 export interface GompertzParams {
   /** daily hazard at age 0 */
@@ -22,17 +20,22 @@ export function gompertzHazard(params: GompertzParams, ageDays: number): number 
 }
 
 /**
- * Solves a and g so that S(typical) = 0.5 and S(max) = 0.01. When typical/max is too small
- * for a positive g, a constant hazard matching S(typical) = 0.5 is returned.
+ * Solves a and g so that S(typical) and S(max) hit the calibration targets. When typical/max is
+ * too small for a positive g, a constant hazard matching S(typical) is returned.
  */
-export function fitGompertz(typicalDays: number, maxDays: number): GompertzParams {
+export function fitGompertz(
+  params: ParameterSet,
+  typicalDays: number,
+  maxDays: number,
+): GompertzParams {
+  const { survivalAtTypical, survivalAtMax } = params.generation.gompertz;
   if (!(typicalDays > 0) || !(maxDays > typicalDays)) {
     throw new Error(`Invalid lifespan: typical ${typicalDays}, max ${maxDays}`);
   }
-  const target = Math.log(SURVIVAL_AT_TYPICAL) / Math.log(SURVIVAL_AT_MAX);
+  const target = Math.log(survivalAtTypical) / Math.log(survivalAtMax);
   const ratioAt = (g: number): number => Math.expm1(g * typicalDays) / Math.expm1(g * maxDays);
   if (typicalDays / maxDays <= target) {
-    return { a: -Math.log(SURVIVAL_AT_TYPICAL) / typicalDays, g: 0 };
+    return { a: -Math.log(survivalAtTypical) / typicalDays, g: 0 };
   }
   let low = 1e-12;
   let high = 1 / typicalDays;
@@ -43,6 +46,6 @@ export function fitGompertz(typicalDays: number, maxDays: number): GompertzParam
     else high = mid;
   }
   const g = (low + high) / 2;
-  const a = (-Math.log(SURVIVAL_AT_TYPICAL) * g) / Math.expm1(g * typicalDays);
+  const a = (-Math.log(survivalAtTypical) * g) / Math.expm1(g * typicalDays);
   return { a, g };
 }

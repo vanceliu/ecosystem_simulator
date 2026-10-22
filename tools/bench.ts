@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import { ARCHETYPE_IDS } from '../src/content/archetypeIds';
-import { getArchetype } from '../src/content/archetypes/index';
+import type { ParameterSet } from '../src/content/parameters';
 import { computeGeometry, createInitialState, step } from '../src/engine/index';
 import { createBioContext } from '../src/engine/bioContext';
 import {
@@ -17,6 +17,7 @@ import { createRng } from '../src/engine/rng';
 import type { SimulationState, TankConfig } from '../src/engine/types';
 import { recommendTankConfig, representativeLocation } from '../src/game/setup';
 import { sampleGenotype } from '../src/generation/index';
+import { loadParameterSet } from './reference-node';
 
 /** docs/04 §9.2 performance check: a large half-land tank filled with many populations. */
 const USAGE = 'npm run bench -- [--populations <n>] [--ticks <n>]';
@@ -25,8 +26,8 @@ const SETTLE_TICKS = 48;
 /** docs/04 §9.2 */
 const TARGET_MS = 100;
 
-function benchTank(): TankConfig {
-  const location = representativeLocation({
+function benchTank(params: ParameterSet): TankConfig {
+  const location = representativeLocation(params, {
     hemisphere: 'north',
     latitudeZone: 'tropical',
     altitudeBand: 'lowland',
@@ -36,7 +37,7 @@ function benchTank(): TankConfig {
     realm: 'IM',
   });
   return {
-    ...recommendTankConfig(location, 'indoor'),
+    ...recommendTankConfig(params, location, 'indoor'),
     lengthCm: 600,
     widthCm: 200,
     heightCm: 120,
@@ -46,41 +47,41 @@ function benchTank(): TankConfig {
   };
 }
 
-function populate(state: SimulationState, target: number): void {
+function populate(params: ParameterSet, state: SimulationState, target: number): void {
   const rng = createRng(7);
-  const geometry = computeGeometry(state.config);
+  const geometry = computeGeometry(params, state.config);
   const space: Space = {
     geometry,
     waterVolumeL: state.water.volumeL,
     landSubstrateDepthCm: state.config.landSubstrateDepthCm,
   };
-  const context = createBioContext(state, toPools(state), geometry, 0);
+  const context = createBioContext(params, state, toPools(params, state), geometry, 0);
   for (let round = 0; state.populations.length < target && round < 200; round += 1) {
     for (const id of ARCHETYPE_IDS) {
       if (state.populations.length >= target) return;
-      const archetype = getArchetype(id);
-      const speciesId = sampleGenotype(archetype, rng, {
+      const archetype = params.archetypes[id];
+      const speciesId = sampleGenotype(params, archetype, rng, {
         temperatureC: state.water.temperatureC,
         salinityPpt: context.salinityPpt,
         ph: context.ph,
       });
       if (speciesId === null) continue;
-      const phenotype = phenotypeOf(speciesId);
+      const phenotype = phenotypeOf(params, speciesId);
       if (enclosureProblem(archetype, phenotype, state.config, space) !== null) continue;
       if (state.species[speciesId] !== undefined) continue;
-      const w = waterFraction(archetype, phenotype, context.media, false);
+      const w = waterFraction(params, archetype, phenotype, context.media, false);
       const temperature = bodyTemperature(state, archetype, w, false);
-      if (environmentFactor(state, phenotype, temperature, w) <= 0) continue;
+      if (environmentFactor(params, state, phenotype, temperature, w) <= 0) continue;
       registerSpecies(state, { id: speciesId, origin: 'release', introduced: false });
       if (archetype.kind === 'biomass') {
         foundBiomass(
           state,
           speciesId,
           'player_release',
-          capacityCod(archetype, phenotype, space) * 1e-3 + 1,
+          capacityCod(params, archetype, phenotype, space) * 1e-3 + 1,
         );
       } else {
-        foundCohort(state, speciesId, 'player_release', {
+        foundCohort(params, state, speciesId, 'player_release', {
           birthTick: state.tick - Math.ceil(phenotype.maturityDays * TICKS_PER_DAY),
           count: 5,
           meanMassMg: phenotype.adultMassMg,
@@ -93,7 +94,8 @@ function populate(state: SimulationState, target: number): void {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
+  const params = await loadParameterSet();
   const { values } = parseArgs({
     options: {
       populations: { type: 'string', default: '1000' },
@@ -103,13 +105,13 @@ function main(): void {
   const target = Number(values.populations);
   const ticks = Number(values.ticks);
   if (!(target > 0 && ticks > 0)) throw new Error(USAGE);
-  let state = createInitialState(benchTank(), 'bench');
-  populate(state, target);
-  for (let tick = 0; tick < SETTLE_TICKS; tick += 1) state = step(state).state;
-  populate(state, target);
+  let state = createInitialState(params, benchTank(params), 'bench');
+  populate(params, state, target);
+  for (let tick = 0; tick < SETTLE_TICKS; tick += 1) state = step(params, state).state;
+  populate(params, state, target);
   const start = state.populations.length;
   const began = performance.now();
-  for (let tick = 0; tick < ticks; tick += 1) state = step(state).state;
+  for (let tick = 0; tick < ticks; tick += 1) state = step(params, state).state;
   const perTick = (performance.now() - began) / ticks;
   process.stdout.write(
     `populations ${start} → ${state.populations.length} · ${perTick.toFixed(2)} ms/tick · ` +
@@ -117,4 +119,4 @@ function main(): void {
   );
 }
 
-main();
+await main();

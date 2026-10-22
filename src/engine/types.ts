@@ -17,6 +17,7 @@ import type {
   MaterialSource,
   SubstrateId,
 } from '../content/tankOptions';
+import type { StateSubstanceId } from '../content/substances';
 import type { WaterSourceId } from '../content/waterSources';
 
 export interface LocationConfig {
@@ -83,41 +84,10 @@ export interface TankConfig {
   readonly openInflow: boolean;
 }
 
-/** Organic matter as COD with its nitrogen and phosphorus, all in mg. */
-export interface OrganicPool {
-  cod: number;
-  n: number;
-  p: number;
-}
-
-/** Water pools are total masses (mg) so volume changes conserve mass. */
+/** Physical state of the water body; substance masses live in `SimulationState.substances`. */
 export interface WaterState {
   volumeL: number;
   temperatureC: number;
-  saltMg: number;
-  /** alkalinity as mg CaCO3 */
-  alkalinityMg: number;
-  o2: number;
-  co2: number;
-  /** mg N */
-  tan: number;
-  /** mg N */
-  no2: number;
-  /** mg N */
-  no3: number;
-  /** mg P */
-  po4: number;
-  sio2: number;
-  ca: number;
-  /** readily biodegradable dissolved COD */
-  substrateCod: number;
-  food: OrganicPool;
-  detritus: OrganicPool;
-  inert: OrganicPool;
-  /** exchangeable ammonium in the substrate, mg N */
-  sedimentTan: number;
-  /** exchangeable phosphate in the substrate, mg P */
-  sedimentPo4: number;
   iceCover: boolean;
   snowOnIce: boolean;
 }
@@ -128,13 +98,6 @@ export interface LandState {
   humidity: number;
   /** 0–1 */
   soilMoisture: number;
-  litter: OrganicPool;
-  /** dissolved soil organic COD released by litter decay */
-  soilSubstrateCod: number;
-  /** mg N */
-  soilTan: number;
-  /** mg P */
-  soilPo4: number;
 }
 
 export interface ClimateState {
@@ -258,13 +221,15 @@ export interface Tracking {
 }
 
 export interface SimulationState {
-  readonly schema: 1;
+  readonly schema: 2;
   readonly worldSeed: string;
   readonly seedHash: number;
   tick: number;
   readonly config: TankConfig;
   water: WaterState;
   land: LandState;
+  /** total mass of each substance pool (ref_substance), mg; water pools are not concentrations */
+  substances: Record<StateSubstanceId, number>;
   climate: ClimateState;
   /** every species that has lived in this tank, including extinct ones */
   species: Record<GenotypeCode, SpeciesRecord>;

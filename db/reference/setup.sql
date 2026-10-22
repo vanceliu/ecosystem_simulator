@@ -1,0 +1,27 @@
+-- Reference data (docs/10 §2.1); edit values here.
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.springEquinoxDay.north', 'number', 80, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.springEquinoxDay.south', 'number', 263, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.defaultRoomTemperatureC', 'number', 22, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.defaultOutdoorShading', 'number', 0.3, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.defaultSubstrateDepthCm', 'number', 5, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.defaultLandSubstrateDepthCm', 'number', 8, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.humidLidThreshold', 'number', 70, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.saltWaterMinPpt', 'number', 5, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.canisterMinVolumeL', 'number', 30, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.stillWaterFlow', 'number', 0.3, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.defaultAeration', 'number', 0.5, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.terrarium.minLandPercent', 'number', 85, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.terrarium.lengthCm', 'number', 45, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.terrarium.widthCm', 'number', 45, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.terrarium.heightCm', 'number', 60, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.paludarium.minLandPercent', 'number', 20, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.paludarium.lengthCm', 'number', 90, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.paludarium.widthCm', 'number', 45, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.paludarium.heightCm', 'number', 45, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.deepWater.minWaterDepthCm', 'number', 40, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.deepWater.lengthCm', 'number', 90, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.deepWater.widthCm', 'number', 45, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.deepWater.heightCm', 'number', 55, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.aquarium.lengthCm', 'number', 60, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.aquarium.widthCm', 'number', 30, NULL, NULL, NULL, NULL, 'docs/11 §5.1');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('setup.enclosures.aquarium.heightCm', 'number', 36, NULL, NULL, NULL, NULL, 'docs/11 §5.1');

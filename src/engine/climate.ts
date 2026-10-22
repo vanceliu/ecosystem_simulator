@@ -1,10 +1,5 @@
-import {
-  RAIN_DAY_DIVISOR_MM,
-  SUNSHINE_FRACTION,
-  climateFor,
-  evaporationProfile,
-  type ClimateNormal,
-} from '../content/climate';
+import { climateFor, evaporationProfile, type ClimateNormal } from '../content/climate';
+import type { ParameterSet } from '../content/parameters';
 import { lapseAdjustedTemperature } from './atmosphere';
 import { clearSkyPpfd, dayLengthHours } from './astronomy';
 import type { Rng } from './rng';
@@ -12,11 +7,6 @@ import type { LocationConfig } from './types';
 
 export const DAYS_PER_YEAR = 365;
 const DAYS_PER_MONTH = DAYS_PER_YEAR / 12;
-const WET_SEASON_SHARE = 0.8;
-const HUMIDITY_TRANSITION_DAYS = 15;
-const MAX_RAIN_DAY_PROBABILITY = 0.9;
-/** Local solar hour of the daily temperature maximum. */
-const PEAK_TEMPERATURE_HOUR = 15;
 
 export interface DailyClimate {
   readonly dayOfYear: number;
@@ -30,8 +20,13 @@ export interface DailyClimate {
   readonly dayLengthH: number;
 }
 
-export function requireClimate(location: LocationConfig): ClimateNormal {
-  const normal = climateFor(location.latitudeZone, location.moisture, location.continentality);
+export function requireClimate(params: ParameterSet, location: LocationConfig): ClimateNormal {
+  const normal = climateFor(
+    params.climate,
+    location.latitudeZone,
+    location.moisture,
+    location.continentality,
+  );
   if (normal === undefined) {
     throw new Error(`No climate for ${location.latitudeZone} × ${location.moisture}`);
   }
@@ -54,6 +49,7 @@ function monthMidDay(month: number): number {
 }
 
 function seasonalTemperature(
+  params: ParameterSet,
   normal: ClimateNormal,
   location: LocationConfig,
   dayOfYear: number,
@@ -64,23 +60,35 @@ function seasonalTemperature(
     monthMidDay(normal.warmMonth) + (location.hemisphere === 'south' ? DAYS_PER_YEAR / 2 : 0);
   const seaLevelEquivalent =
     centre + amplitude * Math.cos((2 * Math.PI * (dayOfYear - warmDay)) / DAYS_PER_YEAR);
-  return lapseAdjustedTemperature(seaLevelEquivalent, normal.stationElevationM, location.altitudeM);
+  return lapseAdjustedTemperature(
+    params,
+    seaLevelEquivalent,
+    normal.stationElevationM,
+    location.altitudeM,
+  );
 }
 
-function monthlyPrecipitation(normal: ClimateNormal, month: number): number {
+function monthlyPrecipitation(params: ParameterSet, normal: ClimateNormal, month: number): number {
   if (normal.wetMonths.length === 0) return normal.precipAnnualMm / 12;
+  const wetShare = params.mechanics.climate.wetSeasonShare;
   const isWet = normal.wetMonths.includes(month);
   return isWet
-    ? (normal.precipAnnualMm * WET_SEASON_SHARE) / normal.wetMonths.length
-    : (normal.precipAnnualMm * (1 - WET_SEASON_SHARE)) / (12 - normal.wetMonths.length);
+    ? (normal.precipAnnualMm * wetShare) / normal.wetMonths.length
+    : (normal.precipAnnualMm * (1 - wetShare)) / (12 - normal.wetMonths.length);
 }
 
-function humidity(normal: ClimateNormal, location: LocationConfig, dayOfYear: number): number {
+function humidity(
+  params: ParameterSet,
+  normal: ClimateNormal,
+  location: LocationConfig,
+  dayOfYear: number,
+): number {
   const humidMonths = normal.humidMonths ?? normal.wetMonths;
   if (humidMonths.length === 0) return (normal.rhWet + normal.rhDry) / 2;
   let humidDays = 0;
-  const window = 2 * HUMIDITY_TRANSITION_DAYS + 1;
-  for (let offset = -HUMIDITY_TRANSITION_DAYS; offset <= HUMIDITY_TRANSITION_DAYS; offset += 1) {
+  const transition = params.mechanics.climate.humidityTransitionDays;
+  const window = 2 * transition + 1;
+  for (let offset = -transition; offset <= transition; offset += 1) {
     const day = ((((dayOfYear - 1 + offset) % DAYS_PER_YEAR) + DAYS_PER_YEAR) % DAYS_PER_YEAR) + 1;
     if (humidMonths.includes(equivalentMonth(day, location))) humidDays += 1;
   }
@@ -88,28 +96,43 @@ function humidity(normal: ClimateNormal, location: LocationConfig, dayOfYear: nu
 }
 
 /** docs/11 §4 */
-export function dailyClimate(location: LocationConfig, dayOfYear: number): DailyClimate {
-  const normal = requireClimate(location);
+export function dailyClimate(
+  params: ParameterSet,
+  location: LocationConfig,
+  dayOfYear: number,
+): DailyClimate {
+  const normal = requireClimate(params, location);
+  const sunshineFraction = params.climate.sunshineFraction;
   const month = equivalentMonth(dayOfYear, location);
-  const meanTemperatureC = seasonalTemperature(normal, location, dayOfYear);
+  const meanTemperatureC = seasonalTemperature(params, normal, location, dayOfYear);
   const wetSeason = normal.wetMonths.length === 0 ? null : normal.wetMonths.includes(month);
   const sunshine =
     wetSeason === null
-      ? SUNSHINE_FRACTION.evenRain.value
+      ? sunshineFraction.evenRain.value
       : wetSeason
-        ? SUNSHINE_FRACTION.wetSeason.value
-        : SUNSHINE_FRACTION.drySeason.value;
-  const evaporation = evaporationProfile(location.latitudeZone, location.moisture);
-  const warm = lapseAdjustedTemperature(normal.tWarm, normal.stationElevationM, location.altitudeM);
-  const cold = lapseAdjustedTemperature(normal.tCold, normal.stationElevationM, location.altitudeM);
+        ? sunshineFraction.wetSeason.value
+        : sunshineFraction.drySeason.value;
+  const evaporation = evaporationProfile(params.climate, location.latitudeZone, location.moisture);
+  const warm = lapseAdjustedTemperature(
+    params,
+    normal.tWarm,
+    normal.stationElevationM,
+    location.altitudeM,
+  );
+  const cold = lapseAdjustedTemperature(
+    params,
+    normal.tCold,
+    normal.stationElevationM,
+    location.altitudeM,
+  );
   const warmth =
     warm > cold ? Math.min(1, Math.max(0, (meanTemperatureC - cold) / (warm - cold))) : 1;
   return {
     dayOfYear,
     meanTemperatureC,
     dtr: normal.dtr,
-    humidity: humidity(normal, location, dayOfYear),
-    monthlyPrecipMm: monthlyPrecipitation(normal, month),
+    humidity: humidity(params, normal, location, dayOfYear),
+    monthlyPrecipMm: monthlyPrecipitation(params, normal, month),
     wetSeason,
     sunshine,
     evaporationMmPerDay:
@@ -118,26 +141,39 @@ export function dailyClimate(location: LocationConfig, dayOfYear: number): Daily
   };
 }
 
-export function hourlyAmbientTemperature(daily: DailyClimate, hour: number): number {
-  return (
-    daily.meanTemperatureC +
-    (daily.dtr / 2) * Math.cos((2 * Math.PI * (hour - PEAK_TEMPERATURE_HOUR)) / 24)
-  );
+export function hourlyAmbientTemperature(
+  params: ParameterSet,
+  daily: DailyClimate,
+  hour: number,
+): number {
+  const peak = params.mechanics.climate.peakTemperatureHour;
+  return daily.meanTemperatureC + (daily.dtr / 2) * Math.cos((2 * Math.PI * (hour - peak)) / 24);
 }
 
 /** Daily rainfall draw, mm. */
-export function drawRainfall(daily: DailyClimate, rng: Rng): number {
+export function drawRainfall(params: ParameterSet, daily: DailyClimate, rng: Rng): number {
   const expectedDaily = daily.monthlyPrecipMm / DAYS_PER_MONTH;
   const probability = Math.min(
-    MAX_RAIN_DAY_PROBABILITY,
-    daily.monthlyPrecipMm / RAIN_DAY_DIVISOR_MM.value,
+    params.mechanics.climate.maxRainDayProbability,
+    daily.monthlyPrecipMm / params.climate.rainDayDivisorMm.value,
   );
   if (probability <= 0) return 0;
   return rng.next() < probability ? expectedDaily / probability : 0;
 }
 
-export function naturalPpfd(location: LocationConfig, daily: DailyClimate, hour: number): number {
-  const clear = clearSkyPpfd(signedLatitude(location), daily.dayOfYear, hour, location.altitudeM);
+export function naturalPpfd(
+  params: ParameterSet,
+  location: LocationConfig,
+  daily: DailyClimate,
+  hour: number,
+): number {
+  const clear = clearSkyPpfd(
+    params,
+    signedLatitude(location),
+    daily.dayOfYear,
+    hour,
+    location.altitudeM,
+  );
   return clear * (0.25 + 0.75 * daily.sunshine);
 }
 

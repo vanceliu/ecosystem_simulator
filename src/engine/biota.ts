@@ -1,8 +1,6 @@
 import type { Archetype, Habitat, SpecialisedEffects } from '../content/archetype';
+import type { ParameterSet } from '../content/parameters';
 import type { Sourced } from '../content/sourced';
-import { getArchetype } from '../content/archetypes/index';
-import { BODY_COMPOSITION } from '../content/physiology';
-import { STOICHIOMETRY } from '../content/stoichiometry';
 import {
   derivePhenotype,
   parseGenotypeCode,
@@ -15,12 +13,12 @@ import {
 import { salinityPpt, waterPh } from './environment';
 import type { AgeCohort, CohortPopulation, Population, SimulationState } from './types';
 
-export const COD_PER_DRY_MASS = STOICHIOMETRY.codPerDryBiomass.value;
 export const TICKS_PER_DAY = 24;
 
-/** docs/04 §5.4 water-time fraction by zone; habitat allele shifts A-zone animals by this much. */
-const ZONE_WATER_FRACTION = { W: 1, T: 0, A: 0.5 } as const;
-const HABITAT_WATER_SHIFT = 0.2;
+/** mg COD per mg dry biomass. */
+export const codPerDryMass = (params: ParameterSet): number =>
+  params.stoichiometry.base.codPerDryBiomass.value;
+
 const WATER_HABITATS: ReadonlySet<Habitat> = new Set([
   'pelagic',
   'surface',
@@ -31,7 +29,7 @@ const WATER_HABITATS: ReadonlySet<Habitat> = new Set([
   'crevice',
 ]);
 
-const phenotypeCache = new Map<GenotypeCode, Phenotype>();
+const phenotypeCaches = new WeakMap<ParameterSet, Map<GenotypeCode, Phenotype>>();
 const NO_EFFECTS: SpecialisedEffects = {};
 
 /** docs/05 §2.3 effects of the specialised metabolism allele; empty for other species. */
@@ -52,33 +50,40 @@ export function humidityMinOf(archetype: Archetype, phenotype: Phenotype): numbe
   return Math.min(95, Math.max(10, base + shift));
 }
 
-export function archetypeOf(speciesId: GenotypeCode): Archetype {
-  return getArchetype(parseGenotypeCode(speciesId).archetypeId);
+export function archetypeOf(params: ParameterSet, speciesId: GenotypeCode): Archetype {
+  return params.archetypes[parseGenotypeCode(speciesId).archetypeId];
 }
 
-export function phenotypeOf(speciesId: GenotypeCode): Phenotype {
-  const cached = phenotypeCache.get(speciesId);
+export function phenotypeOf(params: ParameterSet, speciesId: GenotypeCode): Phenotype {
+  let cache = phenotypeCaches.get(params);
+  if (cache === undefined) {
+    cache = new Map();
+    phenotypeCaches.set(params, cache);
+  }
+  const cached = cache.get(speciesId);
   if (cached !== undefined) return cached;
-  const phenotype = derivePhenotype(archetypeOf(speciesId), speciesId);
-  phenotypeCache.set(speciesId, phenotype);
+  const phenotype = derivePhenotype(params, archetypeOf(params, speciesId), speciesId);
+  cache.set(speciesId, phenotype);
   return phenotype;
 }
 
 /** Element content per mg COD of an archetype's living tissue. */
-export function bodyRatios(archetype: Archetype): { n: number; p: number } {
-  const body = archetype.bodyComposition ?? BODY_COMPOSITION[archetype.metabolicClass];
-  return {
-    n: body.nPerDryMass.value / COD_PER_DRY_MASS,
-    p: body.pPerDryMass.value / COD_PER_DRY_MASS,
-  };
+export function bodyRatios(params: ParameterSet, archetype: Archetype): { n: number; p: number } {
+  const body =
+    archetype.bodyComposition ?? params.physiology.bodyComposition[archetype.metabolicClass];
+  const cod = codPerDryMass(params);
+  return { n: body.nPerDryMass.value / cod, p: body.pPerDryMass.value / cod };
 }
 
-export const cohortCod = (cohort: AgeCohort): number =>
-  cohort.count * cohort.meanMassMg * COD_PER_DRY_MASS;
+export const cohortCod = (params: ParameterSet, cohort: AgeCohort): number =>
+  cohort.count * cohort.meanMassMg * codPerDryMass(params);
 
-export function populationCod(population: Population): number {
+export function populationCod(params: ParameterSet, population: Population): number {
   if (population.kind === 'biomass') return population.cod;
-  return population.cohorts.reduce((sum, cohort) => sum + cohortCod(cohort), population.reserveCod);
+  return population.cohorts.reduce(
+    (sum, cohort) => sum + cohortCod(params, cohort),
+    population.reserveCod,
+  );
 }
 
 export function populationCount(population: CohortPopulation): number {
@@ -99,17 +104,19 @@ export function mediaOf(state: SimulationState, landAreaM2: number): Media {
 
 /** Share of time spent in water (docs/04 §5.4), restricted to the media the tank has. */
 export function waterFraction(
+  params: ParameterSet,
   archetype: Archetype,
   phenotype: Phenotype,
   media: Media,
   aquaticStage: boolean,
 ): number {
-  let w: number = aquaticStage ? 1 : ZONE_WATER_FRACTION[archetype.zone];
+  const biota = params.mechanics.biota;
+  let w: number = aquaticStage ? 1 : biota.zoneWaterFraction[archetype.zone];
   if (!aquaticStage && archetype.zone === 'A' && phenotype.habitats.length > 0) {
     const inWater = phenotype.habitats.filter((habitat) => WATER_HABITATS.has(habitat)).length;
     const onLand = phenotype.habitats.length - inWater;
-    if (inWater > onLand) w += HABITAT_WATER_SHIFT;
-    if (onLand > inWater) w -= HABITAT_WATER_SHIFT;
+    if (inWater > onLand) w += biota.habitatWaterShift;
+    if (onLand > inWater) w -= biota.habitatWaterShift;
   }
   if (!media.hasWater) return 0;
   if (!media.hasLand) return 1;
@@ -141,6 +148,7 @@ export function humidityFactor(humidity: number, humidityMin: number | undefined
 
 /** docs/04 §5.1 f_env; land organisms replace salinity with humidity. */
 export function environmentFactor(
+  params: ParameterSet,
   state: SimulationState,
   phenotype: Phenotype,
   temperatureC: number,
@@ -151,8 +159,8 @@ export function environmentFactor(
   if (w > 0 && state.water.volumeL > 0) {
     const salinity = phenotype.salinityPpt;
     const aquatic =
-      (salinity === undefined ? 1 : salinityFactor(salinityPpt(state), salinity)) *
-      phResponse(waterPh(state), phenotype.ph);
+      (salinity === undefined ? 1 : salinityFactor(params, salinityPpt(state), salinity)) *
+      phResponse(params, waterPh(params, state), phenotype.ph);
     factor *= w >= 1 ? aquatic : Math.max(aquatic, 1 - w);
   }
   if (w < 1) factor *= humidityFactor(state.land.humidity, humidityMinPercent);

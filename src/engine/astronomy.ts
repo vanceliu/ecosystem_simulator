@@ -1,6 +1,6 @@
+import type { ParameterSet } from '../content/parameters';
+
 const DEG = Math.PI / 180;
-/** µmol·m⁻²·s⁻¹ per W·m⁻² of global irradiance (PAR fraction 0.46 × 4.57). */
-export const PPFD_PER_WATT = 2.1;
 
 /** Forsythe et al. 1995 CBM model, hours of daylight; latitude negative in the south. */
 export function dayLengthHours(latitudeDeg: number, dayOfYear: number): number {
@@ -35,6 +35,7 @@ export function noonClearSkyIrradiance(
 
 /** Clear-sky PPFD at a local solar hour, sinusoidal between sunrise and sunset. */
 export function clearSkyPpfd(
+  params: ParameterSet,
   latitudeDeg: number,
   dayOfYear: number,
   hour: number,
@@ -45,6 +46,7 @@ export function clearSkyPpfd(
   const sunrise = 12 - dayLength / 2;
   const progress = (hour + 0.5 - sunrise) / dayLength;
   if (progress <= 0 || progress >= 1) return 0;
-  const noon = noonClearSkyIrradiance(latitudeDeg, dayOfYear, altitudeM) * PPFD_PER_WATT;
+  const noon =
+    noonClearSkyIrradiance(latitudeDeg, dayOfYear, altitudeM) * params.physics.ppfdPerWatt.value;
   return noon * Math.sin(Math.PI * progress);
 }

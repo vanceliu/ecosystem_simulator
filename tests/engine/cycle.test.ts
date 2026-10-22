@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CYCLE_MIN_TOTAL_NITRIFIED_MG_L } from '../../src/engine/events';
 import { cloneState, totalNitrogen, totalPhosphorus } from '../../src/engine/index';
 import { CYCLING_TANK, DAILY_FEED_MG, FEED_HOUR } from './fixtures';
 import { peakDay, runDays } from './simulation';
+import { params } from '../params';
 
 const DAYS = 70;
 /** docs/06 §6 judges cycle timing by the median over seeds */
@@ -41,7 +41,7 @@ describe('fishless cycle (docs/06 §4, docs/00 M1)', () => {
     const last = medianRun.daily.at(-1);
     const volume = medianRun.final.water.volumeL;
     expect(medianRun.final.tracking.nitrifiedN / volume).toBeGreaterThanOrEqual(
-      CYCLE_MIN_TOTAL_NITRIFIED_MG_L,
+      params.mechanics.events.cycleMinTotalNitrifiedMgL,
     );
     expect(last?.tanMgL ?? 1).toBeLessThan(0.25);
     expect(last?.no2MgL ?? 1).toBeLessThan(0.25);
@@ -49,10 +49,10 @@ describe('fishless cycle (docs/06 §4, docs/00 M1)', () => {
 
   it('conserves nitrogen and phosphorus', () => {
     const { initial, final } = result;
-    const nExpected = totalNitrogen(initial) + final.ledger.nIn - final.ledger.nOut;
-    const pExpected = totalPhosphorus(initial) + final.ledger.pIn - final.ledger.pOut;
-    expect(Math.abs(totalNitrogen(final) - nExpected) / nExpected).toBeLessThan(1e-9);
-    expect(Math.abs(totalPhosphorus(final) - pExpected) / pExpected).toBeLessThan(1e-9);
+    const nExpected = totalNitrogen(params, initial) + final.ledger.nIn - final.ledger.nOut;
+    const pExpected = totalPhosphorus(params, initial) + final.ledger.pIn - final.ledger.pOut;
+    expect(Math.abs(totalNitrogen(params, final) - nExpected) / nExpected).toBeLessThan(1e-9);
+    expect(Math.abs(totalPhosphorus(params, final) - pExpected) / pExpected).toBeLessThan(1e-9);
   });
 
   it('keeps every pool non-negative and finite', () => {

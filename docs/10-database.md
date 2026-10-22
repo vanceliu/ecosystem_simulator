@@ -9,10 +9,12 @@
 | 執行位置 | 模擬 Web Worker 內；唯一連線 |
 | 檔名 | `ecosim.sqlite3` |
 | 結構版本 | `PRAGMA user_version` |
-| 參考資料版本 | `meta.reference_version` |
+| 參考資料版本 | `meta.reference_version`：種子檔路徑與內容的 FNV-1a 32 位元雜湊（8 位十六進位） |
 | Vite | `optimizeDeps.exclude: ['@sqlite.org/sqlite-wasm']` |
 
-- 引擎層（`src/engine`、`src/generation`）不存取資料庫；worker 啟動時將參考資料載入記憶體，以型別化物件傳入引擎。
+- 引擎層（`src/engine`、`src/generation`、`src/game`）不存取資料庫；worker 啟動時讀出參數集（`ParameterSet`），以型別化物件傳入。
+- 開啟流程（`src/worker/database.ts`）：安裝 `opfs-sahpool` → 開啟 `ecosim.sqlite3`（失敗則記憶體資料庫）→ 套用遷移 → 比對並匯入參考資料 → 讀取參數集。
+- Node 端（測試、CLI、工具）以 `tools/reference-node.ts` 在 SQLite WASM 記憶體資料庫執行相同遷移與種子。
 - OPFS 不可用時（私密模式、舊瀏覽器）改用記憶體資料庫，UI 顯示「無法永久保存」警示。
 - 第二個分頁開啟時無法取得連線，UI 顯示「已在其他分頁開啟」並停用模擬。
 
@@ -20,22 +22,40 @@
 
 ### 2.1 參考資料（`ref_`）
 
-來源：`src/content` 型別化資料。`tools/build-reference-sql.ts` 產生 `db/reference.sql`；worker 啟動時若 `meta.reference_version` 與程式內版本不符，於單一交易內清空並重新匯入全部 `ref_` 表。
+來源：`db/reference/*.sql` 種子檔，直接編輯；功能群依組分檔於 `db/reference/archetypes/`。worker 啟動時若 `meta.reference_version` 與打包種子的雜湊不同，於單一交易內（外鍵延後檢查）清空並重新匯入全部 `ref_` 表。
 
 | 表 | 主鍵 | 欄位 |
 |---|---|---|
-| `ref_archetype` | `id` | `name_zh`、`layer`、`category`、`kind`（biomass／cohort）、`zone`（water／land／both）、`salinity_min`、`salinity_max`、`senescence`、`recruitment` |
-| `ref_life_history` | `archetype_id` | `lifespan_min_d`、`lifespan_typ_lo_d`、`lifespan_typ_hi_d`、`lifespan_max_d`、`game_cap_d`、`maturity_min_d`、`maturity_max_d`、`size_min_mm`、`size_max_mm`、`mass_min_mg`、`mass_max_mg`、`density_typ_lo`、`density_typ_hi`、`density_max`、`density_unit`、`min_enclosure_json`、`confidence` |
-| `ref_vector` | `(archetype_id, vector)` | `lambda` |
-| `ref_locus` | `(archetype_id, locus)` | `position`、`allele_count`、`ordered` |
-| `ref_allele` | `(archetype_id, locus, allele_index)` | `label_zh`、`base_weight`、`params_json` |
-| `ref_climate` | `(latitude_zone, moisture, continentality)` | `koppen`、`station`、`station_elevation_m`、`t_ann`、`t_warm`、`t_cold`、`warm_month`、`dtr`、`rh_wet`、`rh_dry`、`precip_annual`、`wet_months_json`、`frost_days`、`selectable`、`basis` |
-| `ref_habitat` | `id` | `name_zh`、`recommend_json`（[11](11-geography-climate.md) §5.1）、`allowed_json`（§5.2）、`features_json`（潮汐、季節乾涸） |
-| `ref_realm` | `code` | `name_zh`、`ocean_regions_json` |
-| `ref_archetype_realm` | `(archetype_id, realm_or_ocean)` | `basis`、`source_id` |
-| `ref_naming` | `(archetype_id, part, idx)` | `text`（字根、字尾、通稱） |
-| `ref_source` | `id` | `title`、`url`、`accessed_at` |
-| `ref_param_source` | `(archetype_id, param)` | `basis`（measured／derived／estimated）、`source_id`（estimated 時可空）、`derivation`（推算方式，`derived` 時必填） |
+| `ref_source` | `id` | `title`、`url` |
+| `ref_param` | `id`（點路徑，例 `mechanics.mortality.stress.ammonia`） | `kind`（number／text／boolean／null／empty_array／empty_object）、`num`、`txt`、`basis`、`source_id`、`derivation`、`note` |
+| `ref_substance` | `id` | `name_zh`、`medium`（water／sediment／land／boundary）、`form`（dissolved／particulate；boundary 為空）、`unit`、`element`（N／P）、`position` |
+| `ref_archetype` | `id` | `name_zh`、`layer`、`zone`、`kind`、`category`、`metabolic_class`、`latin_stem`、`noun_zh`、`position` |
+| `ref_archetype_param` | `(archetype_id, param_id)` | 同 `ref_param` 葉欄位；`param_id` 為功能群資料點路徑（例 `kinetics.muMax`、`lifeHistory.lifespanDays.max`） |
+| `ref_archetype_tag` | `(archetype_id, tag, position, item)` | `value`、`weight`；`tag` 為 salinityClasses、vectors、extraVectors、flags、morphologies、prey、diets（`position` = 食性選項，`weight` = 比重）、defenses、habitats、preyKinds、nativeRealms、nativeOceans |
+
+`ref_param` 群組：
+
+| 前綴 | 內容 |
+|---|---|
+| `stoichiometry.` | 化學計量、飼料與落葉組成、容量換算 |
+| `microbes.` | 微生物共通過程、容量、背景接種 |
+| `physiology.` | 身體組成、代謝尺度、攝食、同化、半飽和、共生、底床 |
+| `tankOptions.` | 底材、造景、過濾、陸域底材、野外材料 |
+| `waterSources.` | 水源水質、海鹽、雨水 |
+| `climate.` | 氣候型、大陸性分割、蒸發、日照、降雨日 |
+| `habitats.` | 光照等級、棲地推薦與可選條件（[11](11-geography-climate.md) §5） |
+| `location.` | 緯度帶、海拔帶、區系海域、區系名稱 |
+| `physics.` | 物理化學常數 |
+| `mechanics.` | 遊戲機制參數（[04](04-simulation-model.md)） |
+| `setup.` | 建缸推薦預設（[11](11-geography-climate.md) §5.1） |
+| `generation.` | 基因座標籤與權重、表現型表、突變、稀有度、Gompertz 校準點、耐受形狀（[05](05-species-generation.md)） |
+| `naming.` | 學名與俗名詞彙（[05](05-species-generation.md) §4） |
+
+- 數值葉節點 `basis` 非空時為附依據的參數（value、basis、source、derivation、note）；空時為純數值。
+- measured、derived 必附 `source_id`；derived 必附 `derivation`；estimated 必附 `note`；`basis` 只用於 number。
+- 陣列以 `.0`、`.1`… 路徑表示；空陣列、空物件以 `empty_array`、`empty_object` 標記。
+- 載入時建構 `ParameterSet` 並驗證：全部功能群、物質、棲地、背景接種微生物 id 存在，各群組齊全。
+- 變更基因座標籤數、表現型表或命名詞彙會改變既有物種的表現型或學名，須新增遷移處理圖鑑。
 
 ### 2.2 圖鑑（`codex_`）
 
@@ -54,7 +74,7 @@
 | `tank_state` | `tank_id` | `tick`、`state_json`（完整 `SimulationState`） |
 | `tank_population` | `(tank_id, population_id)` | `species_id`、`kind`、`established_tick`、`extinct_tick` |
 | `tank_population_daily` | `(tank_id, day, species_id)` | `count`、`biomass`、`juveniles`、`adults`、`senescent`、`trophic_level` |
-| `tank_chemistry_daily` | `(tank_id, day)` | `temperature`、`ph`、`o2`、`tan`、`no2`、`no3`、`po4`、`sio2`、`ca`、`detritus`、`air_temperature`、`humidity`、`soil_moisture`、`litter`、`soil_tan`、`soil_po4`、`ambient_temperature`、`day_length_h`、`precipitation_mm`、`evaporation_mm`、`water_volume_l`、`ice_cover` |
+| `tank_chemistry_daily` | `(tank_id, day, variable)` | `value`；`variable` 為物質 id（`ref_substance`，日均質量 mg）或環境變數（`temperature`、`ph`、`air_temperature`、`humidity`、`soil_moisture`、`ambient_temperature`、`day_length_h`、`precipitation_mm`、`evaporation_mm`、`water_volume_l`、`ice_cover`） |
 
 ### 2.4 紀錄（`log_`）
 

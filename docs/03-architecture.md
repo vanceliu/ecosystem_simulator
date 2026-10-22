@@ -12,11 +12,11 @@ worker：承載 game + engine，與 ui 以訊息溝通
 
 | 層 | 職責 | 規則 |
 |---|---|---|
-| `content` | 功能群資料、建缸選項資料 | 純資料，型別化 TS 模組；不 import 其他層 |
+| `content` | 參考資料型別、id 列舉、參數集建構器（參考資料列 → 型別化 `ParameterSet`） | 不含數值；不 import 其他層 |
 | `generation` | 基因型、表現型推導、命名、突變 | 純函式；亂數只來自傳入的 `Rng` |
 | `engine` | 環境、化學、族群動態、湧現、事件 | 純函式；禁止 `Math.random`、`Date`、DOM、I/O |
 | `game` | 指令處理、圖鑑、分數、離線追算 | 不 import `ui` |
-| `persistence` | SQLite WASM 存取、遷移、參考資料載入、具名查詢；規格見 [10](10-database.md) | 只依賴型別與 `game`；僅在 worker 內執行 |
+| `persistence` | 遷移、參考資料匯入、參數集讀取、寫入器、具名查詢；規格見 [10](10-database.md) | 透過 `SqlDatabase` 介面存取資料庫；worker 與 Node 工具共用 |
 | `worker` | 執行模擬迴圈，接收指令、推送快照、持有資料庫連線 | 唯一持有計時器與資料庫連線的層 |
 | `ui` | Preact + Signals 元件；規格見 [08](08-ui-design.md) | 只透過訊息與 worker 溝通 |
 
@@ -26,30 +26,25 @@ worker：承載 game + engine，與 ui 以訊息溝通
 src/
   content/
     archetype.ts       功能群型別（Archetype、生活史、耐受範圍、最小飼養空間）
-    archetypes/
-      skeleton.ts      分類骨架，與 02 §3–§4 表格對應
-      groups.ts        資料檔分組
-      groupTypes.ts    分組資料型別
-      <組名>.ts        各組功能群資料（9 組）
-      sources/         各組來源登錄表
-      index.ts         ARCHETYPE_DATA、getArchetype
-    tankOptions.ts     建缸選項
-    sources.ts         來源登錄表
+    archetypeIds.ts    功能群 ID 列舉
+    substances.ts      物質 ID 列舉、有機池 ID 組
+    habitats.ts        棲地 ID 列舉與型別
+    microbes.ts        背景接種微生物 ID 列舉
+    location.ts        地點分類列舉
+    climate.ts         氣候型別、氣候查找與蒸發函式（取自參數集）
+    physiology.ts      生理參數型別
+    tankOptions.ts     建缸選項 ID 與型別
+    waterSources.ts    水源 ID 與型別
+    realms.ts          原生分布型別
+    mechanics.ts       物理常數、遊戲機制、建缸推薦的型別
+    genetics.ts        基因座、表現型表、命名詞彙的型別
     sourced.ts         參數依據型別（measured／derived／estimated）
-    microbes.ts        微生物共通過程、容量、背景接種
-    physiology.ts      身體組成、代謝尺度、攝食、同化效率、共生常數
-    physiologySources.ts  生理參數來源登錄表
-    foodWeb.ts         功能群對應的食物類別
-    stoichiometry.ts   化學計量、飼料與落葉組成、容量換算
-    waterSources.ts    水源水質與初始菌量
-    climate.ts         氣候型、蒸發
-    habitats.ts        棲地推薦與可選條件
-    realms.ts          生物地理區原生分布
-    location.ts        地點分類
-    archetypeIds.ts    功能群 ID
+    sources.ts         來源型別
+    parameterTree.ts   點路徑葉節點 → 巢狀物件
+    parameters.ts      ParameterSet 型別與建構器（載入時驗證必填 id）
   generation/
     hash.ts            FNV-1a 雜湊、決定性亂數來源
-    loci.ts            基因座定義與權重
+    loci.ts            基因座順序（編碼結構）；標籤與權重取自參數集
     genotype.ts        混合進位 ↔ base-36 編碼
     phenotype.ts       表現型推導
     gompertz.ts        Gompertz 參數求解、存活函數
@@ -71,7 +66,7 @@ src/
     sourceWater.ts     注水組成（水源、RO 稀釋、人工海鹽）
     land.ts            陸域氣候、逕流
     fluxes.ts          通量限制器、過程型別
-    pools.ts           池鍵、狀態 ↔ 池轉換、鹼度質子平衡
+    pools.ts           池鍵、物質狀態 ↔ 池轉換、鹼度質子平衡
     bioContext.ts      子步長共用的生物條件
     biota.ts           表現型快取、身體組成、體溫、f_env、區域使用
     capacity.ts        容量換算、最小飼養空間
@@ -96,13 +91,15 @@ src/
     scoring.ts
     offline.ts
   persistence/
-    db.ts              連線、OPFS／記憶體降級、交易
+    database.ts        SqlDatabase 介面、遷移、參考資料匯入與版本、參數集讀取
+    reference.ts       ref_ 表列讀取
     migrations/        NNNN_描述.sql
     stateMigrations.ts
-    referenceLoader.ts
     writers.ts         每日彙總、事件、圖鑑、狀態寫入
     queries.ts         具名查詢
   worker/
+    database.ts        SQLite WASM 連線（OPFS opfs-sahpool，記憶體降級）、開啟流程
+    bundledSql.ts      打包遷移檔與參考資料種子（Vite import.meta.glob）
     sim.worker.ts
     protocol.ts
   ui/
@@ -119,9 +116,11 @@ src/
 tools/
   sim-cli.ts           CLI 模擬器（npm run sim）
   batch-balance.ts     批次平衡工具
-  build-reference-sql.ts  由 src/content 產生 db/reference.sql
+  bench.ts             效能量測（npm run bench）
+  reference-node.ts    Node 端以 SQLite WASM 套用遷移與種子、讀取參數集
 db/
-  reference.sql        產生檔，不手改
+  reference/           參考資料種子（SQL；直接編輯）
+    archetypes/        各組功能群
 tests/                 對應 src 結構
 docs/
 ```
@@ -129,10 +128,11 @@ docs/
 ## 3. 模擬核心契約
 
 ```ts
-step(state: SimulationState, commands: Command[]): { state: SimulationState; events: SimEvent[] }
+step(params: ParameterSet, state: SimulationState, commands: Command[]): StepResult
 ```
 
-- `SimulationState` 為可直接序列化的純資料（無類別實例、無函式、無 Map/Set）。
+- `ParameterSet` 由 worker（或 Node 工具）自資料庫讀出後傳入；引擎、生成層、遊戲層所有參數皆取自其中，不存取資料庫。
+- `SimulationState` 為可直接序列化的純資料（無類別實例、無函式、無 Map/Set）；物質池為 `substances: Record<物質 id, mg>`（[04](04-simulation-model.md) §3）。
 - 每個 tick 的亂數：`rng = sfc32(hash(worldSeed, tick))`。相同 `worldSeed`、初始狀態、指令序列 → 相同結果。
 - 指令在 tick 開始時套用，依佇列順序執行。
 - 任一池或族群單 tick 變化量 > 50% 時，該 tick 拆分子步長（最多 8 個）。
@@ -182,7 +182,8 @@ step(state: SimulationState, commands: Command[]): { state: SimulationState; eve
 - TypeScript `strict`，禁止 `any`。
 - 一律使用 `===`。
 - 非同步呼叫必須 `await` 或串接處理。
-- 常數集中於各模組頂部，以具名常數表示，不寫魔術數字。
+- 生物參數、物理常數、遊戲機制參數、基因座表與命名詞彙一律取自 `ParameterSet`（[10](10-database.md) §2.1）；程式內只保留單位換算、id 列舉、編碼結構、亂數流 id 與數值演算法設定。
+- 已發表公式的係數（Benson & Krause、ISA、Forsythe、Laue）屬公式本體，保留於程式並於文件標註來源。
 
 ## 7. 測試策略
 
@@ -191,10 +192,11 @@ step(state: SimulationState, commands: Command[]): { state: SimulationState; eve
 | 單元測試 | 各過程函式（環境、硝化、攝食、代謝、衰老、抽樣、命名） |
 | 基因型測試 | 編碼 ↔ 基因型 ↔ 學名互逆；物種空間計數與 [05](05-species-generation.md) §2.4 一致；Gompertz 參數滿足 `S(typ) = 0.5`、`S(max) = 0.01` |
 | 規則測試 | ESLint 分層與純度規則：違規必報錯、合法 import 不報錯 |
-| 資料庫測試 | 記憶體資料庫：遷移由 0 套用至最新、參考資料匯入筆數、寫入後具名查詢結果、`lineage` 遞迴正確 |
+| 資料庫測試 | 記憶體資料庫：遷移由 0 套用至最新、參考資料版本比對與重新匯入、寫入後具名查詢結果、`lineage` 遞迴正確 |
 | 不變量測試 | 氮、磷守恆（扣除換水、脫氮、餵食輸入）；所有池 ≥ 0 |
 | 決定性測試 | 同種子同指令序列，狀態雜湊一致 |
-| 黃金紀錄測試 | 固定種子跑 30 遊戲日，摘要比對快照 |
+| 黃金紀錄測試 | 固定種子跑 20 遊戲日（淡水、海水、雨林三情境），每日摘要比對 `tests/fixtures/regression-m3.json`（相對誤差 ≤ 1e-9） |
+| 參考資料測試 | 種子外鍵完整；measured／derived 必附來源、derived 必附推算方式、estimated 必附說明；參數集建構完整；worker 打包內容與磁碟一致 |
 | 情境測試 | 開缸循環時程；餵食過量 → 碎屑蟲／刷毛蟲爆發；強光高 PO₄ → 藻華 |
 | UI 測試 | Playwright；定位器優先順序：role > label > `data-testid` |
 

@@ -1,0 +1,24 @@
+-- Reference data (docs/10 §2.1); edit values here.
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.codPerDryBiomass', 'number', 1.42, NULL, 'derived', 'cellFormula', 'C5H7O2N + 5 O2 → 5 CO2 + NH3 + 2 H2O: 160/113', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.nPerBiomassCod', 'number', 0.08, NULL, 'measured', 'asm1', NULL, NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.nPerInertCod', 'number', 0.06, NULL, 'measured', 'asm1', NULL, NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.pPerBiomassCod', 'number', 0.0155, NULL, 'derived', 'cellFormula', 'C60H87O23N12P: 31 g P per 2000 g theoretical O2 demand', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.inertFractionOfDecay', 'number', 0.08, NULL, 'measured', 'asm1', NULL, NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.cellDryMassMg', 'number', 3e-10, NULL, 'measured', 'bionumbers', NULL, NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.o2PerNByAob', 'number', 3.43, NULL, 'derived', 'nitrificationStoichiometry', 'NH4+ → NO2−: 3 × 32 / (2 × 14)', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.o2PerNByNob', 'number', 1.14, NULL, 'derived', 'nitrificationStoichiometry', '4.57 total − 3.43 ammonia step', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.alkalinityPerNEquivalent', 'number', 3.57, NULL, 'measured', 'nitrificationStoichiometry', NULL, NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.caco3PerDkh', 'number', 17.86, NULL, 'derived', 'carbonateEquilibrium', '1 dKH = 10 mg CaO/L = 17.86 mg CaCO3/L', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.base.respiratoryQuotient', 'number', 1, NULL, 'estimated', NULL, NULL, 'mol CO2 released per mol O2 consumed for mixed organic substrate');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.food.proteinFraction', 'number', 0.45, NULL, 'estimated', NULL, NULL, 'typical crude protein of aquarium flake food');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.food.nPerDryMass', 'number', 0.072, NULL, 'derived', 'jonesFactor', '0.45 protein ÷ 6.25', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.food.codPerDryMass', 'number', 1.4, NULL, 'estimated', NULL, NULL, 'protein/lipid/carbohydrate mixture');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.food.pPerDryMass', 'number', 0.012, NULL, 'estimated', NULL, NULL, 'typical phosphorus content of fish feed');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.food.leachingPerDay', 'number', 1.87, NULL, 'derived', 'feedLeaching', '7.5% dry matter lost in 60 min → −ln(0.925) × 24', NULL);
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.litter.codPerDryMass', 'number', 1.2, NULL, 'estimated', NULL, NULL, 'lignocellulose-rich leaf litter');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.litter.nPerDryMass', 'number', 0.015, NULL, 'estimated', NULL, NULL, 'senesced leaf litter');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.litter.pPerDryMass', 'number', 0.001, NULL, 'estimated', NULL, NULL, 'senesced leaf litter');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.capacity.dryMassPerChlorophyll', 'number', 100, NULL, 'estimated', NULL, NULL, 'C:Chl a ≈ 50 g/g with carbon ≈ 50% of dry mass');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.capacity.fullCoverDryGPerM2', 'number', 300, NULL, 'estimated', NULL, NULL, 'dense moss mat or macroalgal bed');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.production.silicaPerDiatomCod', 'number', 0.14, NULL, 'estimated', NULL, NULL, 'docs/04 §5.3 0.2 g SiO2 per g dry mass ÷ 1.42 COD/dry mass');
+INSERT INTO ref_param (id, kind, num, txt, basis, source_id, derivation, note) VALUES ('stoichiometry.production.soilPorosity', 'number', 0.5, NULL, 'estimated', NULL, NULL, 'loose organic substrate');

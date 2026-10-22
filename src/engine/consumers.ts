@@ -1,24 +1,8 @@
-import type {
-  Archetype,
-  BiomassNiche,
-  Defense,
-  DietProfile,
-  FoodKind,
-  Habitat,
-} from '../content/archetype';
+import type { Archetype, BiomassNiche, DietProfile, FoodKind, Habitat } from '../content/archetype';
 import type { ArchetypeId } from '../content/archetypeIds';
-import { getArchetype } from '../content/archetypes/index';
-import { PREY_KINDS } from '../content/foodWeb';
-import {
-  ASSIMILATION_EFFICIENCY,
-  FOOD_CLASS,
-  FOOD_HALF_SATURATION,
-  FUNCTIONAL_RESPONSE_EXPONENT,
-  MAX_INGESTION_MULTIPLIER,
-  METABOLIC_Q10,
-  METABOLIC_SCALING,
-  type ConsumerClass,
-} from '../content/physiology';
+import type { ParameterSet } from '../content/parameters';
+import type { ConsumerClass } from '../content/physiology';
+import { DETRITUS, FOOD, LITTER, type OrganicIds } from '../content/substances';
 import type { Phenotype } from '../generation/index';
 import type { BioContext } from './bioContext';
 import {
@@ -32,49 +16,17 @@ import {
   waterFraction,
 } from './biota';
 import { crowdingFactor } from './crowding';
-import { addTerm, type CohortTouch, type Process } from './fluxes';
-import { temperatureFactor } from './microbes';
 import {
-  cohortKey,
-  gainKey,
-  LAND_LITTER,
-  POOL,
-  populationKey,
-  WATER_DETRITUS,
-  WATER_FOOD,
-  type OrganicKeys,
-} from './pools';
+  addTerm,
+  type CohortTouch,
+  type PoolKey,
+  type Process,
+  type Stoichiometry,
+} from './fluxes';
+import { temperatureFactor } from './microbes';
+import { cohortKey, gainKey, populationKey } from './pools';
 import type { BiomassPopulation, CohortPopulation, Population } from './types';
 
-const CO2_PER_O2 = 44 / 32;
-/** docs/04 §9.2: prey below this share of a predator's scaled intake are left out */
-export const MIN_DIET_SHARE = 0.01;
-/** docs/04 §5.4: off-phase activity of diurnal or nocturnal species */
-export const OFF_PHASE_ACTIVITY = 0.3;
-/** niche overlap when predator and prey share no habitat */
-export const HABITAT_MISMATCH_OVERLAP = 0.3;
-/** docs/04 §5.4: cohorts younger than this count as eggs of egg-laying species */
-export const EGG_STAGE_DAYS = 2;
-/** docs/04 §5.4: prey : predator mass ratio for predators without archetype data */
-export const DEFAULT_PREY_SIZE_RATIO = { min: 1e-6, opt: 1e-3, max: 0.5 } as const;
-/** docs/04 §5.4 refuge multiplier per prey defense */
-export const DEFENSE_REFUGE: Readonly<Record<Defense, number>> = {
-  shell: 0.5,
-  spines: 0.6,
-  toxin: 0.3,
-  venom: 0.7,
-  hiding: 0.6,
-  schooling: 0.8,
-  armor: 0.6,
-  size: 1,
-  burrowing: 0.5,
-  camouflage: 0.7,
-  autotomy: 0.8,
-  mucus: 0.8,
-};
-const MIN_REFUGE = 0.05;
-/** docs/04 §5.4 refuge of biomass embedded in biofilm or sediment */
-export const EMBEDDED_REFUGE = 0.1;
 const EMBEDDED_NICHES: ReadonlySet<BiomassNiche> = new Set(['surface', 'sediment']);
 
 /** Habitats a biomass population occupies, by niche, for niche overlap (docs/04 §5.4). */
@@ -87,14 +39,12 @@ export const NICHE_HABITATS: Readonly<Record<BiomassNiche, readonly Habitat[]>> 
   soil: ['soil', 'leaf_litter', 'burrow'],
   host: ['sessile'],
 };
-const MAX_ASSIMILATION = 0.95;
-
 export type Medium = 'water' | 'land';
 
 /** Anything that can be eaten: a resource pool, a biomass population or one age cohort. */
 export interface FoodNode {
-  readonly key: string;
-  readonly organic: OrganicKeys | null;
+  readonly key: PoolKey;
+  readonly organic: OrganicIds | null;
   /** docs/04 §10 NodeId: species ID, or detritus / food / doc */
   readonly recordId: string;
   readonly kinds: readonly FoodKind[];
@@ -114,35 +64,39 @@ export interface FoodNode {
   readonly vulnerability: number;
 }
 
-const isConsumerClass = (value: string): value is ConsumerClass => value in METABOLIC_SCALING;
+const isConsumerClass = (params: ParameterSet, value: string): value is ConsumerClass =>
+  value in params.physiology.metabolicScaling;
 
 /** docs/04 §5.4 maintenance respiration, d⁻¹ of body COD. */
 export function respirationRate(
+  params: ParameterSet,
   archetype: Archetype,
   phenotype: Phenotype,
   massMg: number,
   temperatureC: number,
 ): number {
   const metabolicClass = archetype.metabolicClass;
-  if (!isConsumerClass(metabolicClass)) return 0;
-  const scaling = METABOLIC_SCALING[metabolicClass];
+  if (!isConsumerClass(params, metabolicClass)) return 0;
+  const scaling = params.physiology.metabolicScaling[metabolicClass];
   return (
     scaling.r0.value *
     phenotype.growthMultiplier *
     phenotype.metabolicMultiplier *
     Math.pow(Math.max(massMg, 1e-12), scaling.exponent.value) *
-    Math.pow(METABOLIC_Q10.value, (temperatureC - 20) / 10)
+    Math.pow(params.physiology.metabolicQ10.value, (temperatureC - 20) / 10)
   );
 }
 
-function maxIngestionMultiplier(archetype: Archetype): number {
+function maxIngestionMultiplier(params: ParameterSet, archetype: Archetype): number {
   const metabolicClass = archetype.metabolicClass;
-  return isConsumerClass(metabolicClass) ? MAX_INGESTION_MULTIPLIER[metabolicClass].value : 0;
+  return isConsumerClass(params, metabolicClass)
+    ? params.physiology.maxIngestionMultiplier[metabolicClass].value
+    : 0;
 }
 
 function organicNode(
   context: BioContext,
-  keys: OrganicKeys,
+  keys: OrganicIds,
   recordId: string,
   kinds: readonly FoodKind[],
   medium: Medium,
@@ -167,13 +121,14 @@ function organicNode(
   };
 }
 
-function vulnerability(phenotype: Phenotype, lightsOn: boolean): number {
+function vulnerability(params: ParameterSet, phenotype: Phenotype, lightsOn: boolean): number {
+  const consumers = params.mechanics.consumers;
   const refuge = phenotype.defenses.reduce(
-    (product, defense) => product * DEFENSE_REFUGE[defense],
+    (product, defense) => product * consumers.defenseRefuge[defense],
     1,
   );
   return (
-    Math.max(MIN_REFUGE, refuge) *
+    Math.max(consumers.minRefuge, refuge) *
     phenotype.predationExposure *
     (lightsOn ? 1 : phenotype.nightExposure)
   );
@@ -204,12 +159,12 @@ export function foodNodes(context: BioContext, populations: readonly Population[
     if (node !== null) nodes.push(node);
   };
   if (context.media.hasWater) {
-    push(organicNode(context, WATER_DETRITUS, 'detritus', ['detritus', 'carrion'], 'water'));
-    push(organicNode(context, WATER_FOOD, 'food', ['food', 'fruit'], 'water'));
-    const doc = context.pools.get(POOL.substrate) ?? 0;
+    push(organicNode(context, DETRITUS, 'detritus', ['detritus', 'carrion'], 'water'));
+    push(organicNode(context, FOOD, 'food', ['food', 'fruit'], 'water'));
+    const doc = context.pools.get('water_substrate') ?? 0;
     if (doc > 0) {
       nodes.push({
-        key: POOL.substrate,
+        key: 'water_substrate',
         organic: null,
         recordId: 'doc',
         kinds: ['doc'],
@@ -230,19 +185,20 @@ export function foodNodes(context: BioContext, populations: readonly Population[
     push(
       organicNode(
         context,
-        LAND_LITTER,
+        LITTER,
         'detritus',
         ['litter', 'detritus', 'carrion', 'food', 'fruit'],
         'land',
       ),
     );
   }
+  const { params } = context;
   const tick = context.state.tick;
   for (const population of populations) {
-    const archetype = getArchetype(population.archetypeId);
-    const phenotype = phenotypeOf(population.speciesId);
-    const ratios = bodyRatios(archetype);
-    const kinds = PREY_KINDS[archetype.id];
+    const archetype = params.archetypes[population.archetypeId];
+    const phenotype = phenotypeOf(params, population.speciesId);
+    const ratios = bodyRatios(params, archetype);
+    const kinds = params.preyKinds[archetype.id];
     if (population.kind === 'biomass') {
       if (population.cod <= 0 || kinds.length === 0) continue;
       const medium: Medium = archetype.zone === 'T' ? 'land' : 'water';
@@ -261,21 +217,22 @@ export function foodNodes(context: BioContext, populations: readonly Population[
         w: medium === 'water' ? 1 : 0,
         habitats: archetype.kind === 'biomass' ? NICHE_HABITATS[archetype.niche] : [],
         vulnerability:
-          vulnerability(phenotype, context.lightsOn) *
+          vulnerability(params, phenotype, context.lightsOn) *
           effect(specialisedOf(archetype, phenotype).predationExposure) *
           (archetype.kind === 'biomass' && EMBEDDED_NICHES.has(archetype.niche)
-            ? EMBEDDED_REFUGE
+            ? params.mechanics.consumers.embeddedRefuge
             : 1),
       });
       continue;
     }
     const laysEggs = archetype.lifeHistory.reproduction.mode === 'eggs';
-    const exposed = vulnerability(phenotype, context.lightsOn);
+    const exposed = vulnerability(params, phenotype, context.lightsOn);
+    const eggDays = params.mechanics.consumers.eggStageDays;
     population.cohorts.forEach((cohort, index) => {
-      const cod = cohortCod(cohort);
+      const cod = cohortCod(params, cohort);
       if (cod <= 0) return;
-      const egg = laysEggs && ageDays(cohort, tick) < EGG_STAGE_DAYS;
-      const w = waterFraction(archetype, phenotype, context.media, cohort.aquatic);
+      const egg = laysEggs && ageDays(cohort, tick) < eggDays;
+      const w = waterFraction(params, archetype, phenotype, context.media, cohort.aquatic);
       nodes.push({
         key: cohortKey(population.id, index),
         organic: null,
@@ -328,50 +285,57 @@ export interface Predator {
   readonly efficiency: (kind: FoodKind) => number;
   /** food density at half-maximal intake by food kind and medium */
   readonly halfSaturation: (kind: FoodKind, medium: Medium) => number;
-  readonly gainKey: string;
+  readonly gainKey: PoolKey;
   readonly n: number;
   readonly p: number;
   readonly breathesAir: boolean;
 }
 
-function activityFactor(phenotype: Phenotype, lightsOn: boolean): number {
+function activityFactor(params: ParameterSet, phenotype: Phenotype, lightsOn: boolean): number {
+  const offPhase = params.mechanics.consumers.offPhaseActivity;
   const phase =
     phenotype.activity === 'diurnal'
       ? lightsOn
         ? 1
-        : OFF_PHASE_ACTIVITY
+        : offPhase
       : phenotype.activity === 'nocturnal'
         ? lightsOn
-          ? OFF_PHASE_ACTIVITY
+          ? offPhase
           : 1
         : 1;
   return phase * (lightsOn ? 1 : phenotype.nightAttack);
 }
 
+/** Food density at half-maximal intake of a food kind in a medium. */
+function foodHalfSaturation(params: ParameterSet, kind: FoodKind, medium: Medium): number {
+  return params.physiology.foodHalfSaturation[params.physiology.foodClass[kind]][medium].value;
+}
+
 function cohortPredator(context: BioContext, population: CohortPopulation): Predator | null {
-  const archetype = getArchetype(population.archetypeId);
-  const phenotype = phenotypeOf(population.speciesId);
+  const { params } = context;
+  const archetype = params.archetypes[population.archetypeId];
+  const phenotype = phenotypeOf(params, population.speciesId);
   if (archetype.kind !== 'cohort' || phenotype.diet === undefined) return null;
   let cod = 0;
   let massWeighted = 0;
   let wWeighted = 0;
   let maxIntake = 0;
-  const multiplier = maxIngestionMultiplier(archetype);
+  const multiplier = maxIngestionMultiplier(params, archetype);
   for (const cohort of population.cohorts) {
-    const cohortMass = cohortCod(cohort);
+    const cohortMass = cohortCod(params, cohort);
     if (cohortMass <= 0) continue;
-    const w = waterFraction(archetype, phenotype, context.media, cohort.aquatic);
+    const w = waterFraction(params, archetype, phenotype, context.media, cohort.aquatic);
     const temperature = bodyTemperature(context.state, archetype, w, context.lightsOn);
     cod += cohortMass;
     massWeighted += cohortMass * cohort.meanMassMg;
     wWeighted += cohortMass * w;
     maxIntake +=
       multiplier *
-      respirationRate(archetype, phenotype, cohort.meanMassMg, temperature) *
+      respirationRate(params, archetype, phenotype, cohort.meanMassMg, temperature) *
       cohortMass;
   }
   if (cod <= 0 || maxIntake <= 0) return null;
-  const ratios = bodyRatios(archetype);
+  const ratios = bodyRatios(params, archetype);
   return {
     populationId: population.id,
     speciesId: population.speciesId,
@@ -379,17 +343,18 @@ function cohortPredator(context: BioContext, population: CohortPopulation): Pred
     diet: phenotype.diet,
     cannibal: archetype.flags.includes('cannibal'),
     massMg: massWeighted / cod,
-    sizeWindow: archetype.preySizeRatio ?? DEFAULT_PREY_SIZE_RATIO,
+    sizeWindow: archetype.preySizeRatio ?? params.mechanics.consumers.defaultPreySizeRatio,
     w: wWeighted / cod,
     habitats: phenotype.habitats,
-    activity: activityFactor(phenotype, context.lightsOn),
+    activity: activityFactor(params, phenotype, context.lightsOn),
     maxIntake,
     efficiency: (kind) =>
       Math.min(
-        MAX_ASSIMILATION,
-        ASSIMILATION_EFFICIENCY[FOOD_CLASS[kind]].value * phenotype.assimilationMultiplier,
+        params.mechanics.consumers.maxAssimilation,
+        params.physiology.assimilationEfficiency[params.physiology.foodClass[kind]].value *
+          phenotype.assimilationMultiplier,
       ),
-    halfSaturation: (kind, medium) => FOOD_HALF_SATURATION[FOOD_CLASS[kind]][medium].value,
+    halfSaturation: (kind, medium) => foodHalfSaturation(params, kind, medium),
     gainKey: gainKey(population.id),
     n: ratios.n,
     p: ratios.p,
@@ -399,16 +364,17 @@ function cohortPredator(context: BioContext, population: CohortPopulation): Pred
 
 /** docs/05 §2.3 parasitic water molds: attack eggs with the effect's maximum intake. */
 function parasitePredator(context: BioContext, population: BiomassPopulation): Predator | null {
-  const archetype = getArchetype(population.archetypeId);
+  const { params } = context;
+  const archetype = params.archetypes[population.archetypeId];
   if (archetype.kind !== 'biomass' || population.cod <= 0) return null;
-  const phenotype = phenotypeOf(population.speciesId);
+  const phenotype = phenotypeOf(params, population.speciesId);
   const perDay = specialisedOf(archetype, phenotype).eggPredation?.value ?? 0;
   const yieldCoefficient = archetype.kinetics.yieldCoefficient?.value ?? 0;
   if (perDay <= 0 || yieldCoefficient <= 0 || !context.media.hasWater) return null;
   const temperature = context.state.water.temperatureC;
   const range = phenotype.temperatureC;
   if (temperature < range.min || temperature > range.max) return null;
-  const ratios = bodyRatios(archetype);
+  const ratios = bodyRatios(params, archetype);
   return {
     populationId: population.id,
     speciesId: population.speciesId,
@@ -416,13 +382,13 @@ function parasitePredator(context: BioContext, population: BiomassPopulation): P
     diet: { egg: 1 },
     cannibal: false,
     massMg: null,
-    sizeWindow: DEFAULT_PREY_SIZE_RATIO,
+    sizeWindow: params.mechanics.consumers.defaultPreySizeRatio,
     w: 1,
     habitats: [],
     activity: 1,
-    maxIntake: perDay * temperatureFactor(temperature) * population.cod,
+    maxIntake: perDay * temperatureFactor(params, temperature) * population.cod,
     efficiency: () => yieldCoefficient,
-    halfSaturation: (kind, medium) => FOOD_HALF_SATURATION[FOOD_CLASS[kind]][medium].value,
+    halfSaturation: (kind, medium) => foodHalfSaturation(params, kind, medium),
     gainKey: populationKey(population.id),
     n: ratios.n,
     p: ratios.p,
@@ -431,11 +397,12 @@ function parasitePredator(context: BioContext, population: BiomassPopulation): P
 }
 
 function biomassPredator(context: BioContext, population: BiomassPopulation): Predator | null {
-  const archetype = getArchetype(population.archetypeId);
+  const { params } = context;
+  const archetype = params.archetypes[population.archetypeId];
   if (archetype.kind !== 'biomass') return null;
   if (archetype.trophicMode !== 'consumer') return parasitePredator(context, population);
   if (population.cod <= 0 || archetype.prey === undefined) return null;
-  const phenotype = phenotypeOf(population.speciesId);
+  const phenotype = phenotypeOf(params, population.speciesId);
   const yieldCoefficient = archetype.kinetics.yieldCoefficient?.value ?? 0;
   const halfSat =
     (archetype.kinetics.halfSat.prey?.value ?? 0) * phenotype.halfSaturationMultiplier;
@@ -446,13 +413,13 @@ function biomassPredator(context: BioContext, population: BiomassPopulation): Pr
   const maxIntake =
     ((archetype.kinetics.muMax.value *
       phenotype.growthMultiplier *
-      temperatureFactor(temperature)) /
+      temperatureFactor(params, temperature)) /
       yieldCoefficient) *
     crowdingFactor(context.occupancy, archetype.id) *
     population.cod;
   const diet: Partial<Record<FoodKind, number>> = {};
   for (const kind of archetype.prey) diet[kind] = 1;
-  const ratios = bodyRatios(archetype);
+  const ratios = bodyRatios(params, archetype);
   return {
     populationId: population.id,
     speciesId: population.speciesId,
@@ -460,7 +427,7 @@ function biomassPredator(context: BioContext, population: BiomassPopulation): Pr
     diet,
     cannibal: false,
     massMg: null,
-    sizeWindow: DEFAULT_PREY_SIZE_RATIO,
+    sizeWindow: params.mechanics.consumers.defaultPreySizeRatio,
     w: 1,
     habitats: NICHE_HABITATS[archetype.niche],
     activity: 1,
@@ -557,7 +524,7 @@ export function attackTerms(
       }
       let habitatOverlap = 1;
       if (node.habitats.length > 0 && habitats.size > 0) {
-        habitatOverlap = HABITAT_MISMATCH_OVERLAP;
+        habitatOverlap = context.params.mechanics.consumers.habitatMismatchOverlap;
         for (const habitat of node.habitats) {
           if (habitats.has(habitat)) {
             habitatOverlap = 1;
@@ -585,9 +552,10 @@ export function attackTerms(
   let totalPreference = 0;
   for (const kind of present) totalPreference += predator.diet[kind] ?? 0;
   if (totalPreference <= 0) return [];
-  const exponent = FUNCTIONAL_RESPONSE_EXPONENT.value;
+  const exponent = context.params.physiology.functionalResponseExponent.value;
   const powered = scaledTerms.map((scaled) => Math.pow(scaled / totalPreference, exponent));
-  const threshold = MIN_DIET_SHARE * powered.reduce((sum, term) => sum + term, 0);
+  const threshold =
+    context.params.mechanics.consumers.minDietShare * powered.reduce((sum, term) => sum + term, 0);
   const terms: { node: FoodNode; kind: FoodKind; term: number }[] = [];
   powered.forEach((term, index) => {
     const node = nodes[index];
@@ -598,15 +566,15 @@ export function attackTerms(
   return terms;
 }
 
-function detritusTarget(context: BioContext, w: number): OrganicKeys {
-  if (!context.media.hasLand) return WATER_DETRITUS;
-  if (!context.media.hasWater) return LAND_LITTER;
-  return w >= 0.5 ? WATER_DETRITUS : LAND_LITTER;
+function detritusTarget(context: BioContext, w: number): OrganicIds {
+  if (!context.media.hasLand) return DETRITUS;
+  if (!context.media.hasWater) return LITTER;
+  return w >= 0.5 ? DETRITUS : LITTER;
 }
 
 /** Excretion and respiration exchange split between water (w) and land (1 − w). */
 function addMetabolicExchange(
-  terms: Record<string, number>,
+  terms: Stoichiometry,
   context: BioContext,
   predator: { readonly w: number; readonly breathesAir: boolean },
   respiredCod: number,
@@ -614,13 +582,13 @@ function addMetabolicExchange(
   p: number,
 ): void {
   const w = predator.w;
-  addTerm(terms, POOL.tan, n * w);
-  addTerm(terms, POOL.po4, p * w);
-  addTerm(terms, POOL.soilTan, n * (1 - w));
-  addTerm(terms, POOL.soilPo4, p * (1 - w));
+  addTerm(terms, 'water_tan', n * w);
+  addTerm(terms, 'water_po4', p * w);
+  addTerm(terms, 'soil_tan', n * (1 - w));
+  addTerm(terms, 'soil_po4', p * (1 - w));
   if (context.media.hasWater && !predator.breathesAir) {
-    addTerm(terms, POOL.o2, -respiredCod * w);
-    addTerm(terms, POOL.co2, respiredCod * w * CO2_PER_O2);
+    addTerm(terms, 'water_o2', -respiredCod * w);
+    addTerm(terms, 'water_co2', respiredCod * w * context.params.physics.co2PerO2.value);
   }
 }
 
@@ -637,7 +605,7 @@ export function feedingProcesses(
     context.satiation.set(predator.populationId, total / (1 + total));
     const eaten = (predator.maxIntake * total * context.dtDays) / (1 + total);
     if (!(eaten > 0) || !(total > 0)) continue;
-    const stoichiometry: Record<string, number> = {};
+    const stoichiometry: Stoichiometry = {};
     const sink = detritusTarget(context, predator.w);
     const shares = new Map<string, number>();
     const cohorts: CohortTouch[] = [];
@@ -691,23 +659,24 @@ export function respirationProcesses(
   context: BioContext,
   populations: readonly Population[],
 ): Process[] {
+  const { params } = context;
   const processes: Process[] = [];
   for (const population of populations) {
     if (population.kind !== 'cohort') continue;
-    const archetype = getArchetype(population.archetypeId);
-    const phenotype = phenotypeOf(population.speciesId);
-    const ratios = bodyRatios(archetype);
+    const archetype = params.archetypes[population.archetypeId];
+    const phenotype = phenotypeOf(params, population.speciesId);
+    const ratios = bodyRatios(params, archetype);
     const breathesAir = archetype.flags.includes('air_breather');
     population.cohorts.forEach((cohort, index) => {
-      const cod = cohortCod(cohort);
+      const cod = cohortCod(params, cohort);
       if (cod <= 0) return;
-      const w = waterFraction(archetype, phenotype, context.media, cohort.aquatic);
+      const w = waterFraction(params, archetype, phenotype, context.media, cohort.aquatic);
       const temperature = bodyTemperature(context.state, archetype, w, context.lightsOn);
-      const rate = respirationRate(archetype, phenotype, cohort.meanMassMg, temperature);
+      const rate = respirationRate(params, archetype, phenotype, cohort.meanMassMg, temperature);
       const respired = rate * cod * context.dtDays;
       if (!(respired > 0)) return;
       const key = cohortKey(population.id, index);
-      const stoichiometry: Record<string, number> = {};
+      const stoichiometry: Stoichiometry = {};
       addTerm(stoichiometry, key, -1);
       addMetabolicExchange(stoichiometry, context, { w, breathesAir }, 1, ratios.n, ratios.p);
       processes.push({
@@ -722,11 +691,8 @@ export function respirationProcesses(
   return processes;
 }
 
-/** docs/04 §7: food supply (Σ a·R) at which an arrival's food score reaches one half */
-export const ARRIVAL_FOOD_HALF_SATURATION = 0.01;
-
 /** Normalised food supply 0–1 for emergence suitability (docs/04 §7). */
 export function foodAvailability(context: BioContext, predator: Predator, food: FoodIndex): number {
   const total = attackTerms(context, predator, food).reduce((sum, entry) => sum + entry.term, 0);
-  return total / (ARRIVAL_FOOD_HALF_SATURATION + total);
+  return total / (context.params.mechanics.consumers.arrivalFoodHalfSaturation + total);
 }

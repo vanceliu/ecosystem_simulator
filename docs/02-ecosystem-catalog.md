@@ -1,6 +1,6 @@
 # 02 生態目錄
 
-本文件定義所有功能群（Archetype），共 111 個，涵蓋水域、陸域與兩棲。只納入變溫動物；鳥類與哺乳類不納入。實作資料位於 `src/content/archetypes/`，數值參數以程式碼為準，本文件定義類群、角色與規則。壽命、繁殖與族群密度見 [09](09-life-history.md)。
+本文件定義所有功能群（Archetype），共 111 個，涵蓋水域、陸域與兩棲。只納入變溫動物；鳥類與哺乳類不納入。實作資料位於參考資料種子 `db/reference/archetypes/`（`ref_archetype`、`ref_archetype_param`、`ref_archetype_tag`；[10](10-database.md) §2.1），數值以參考資料為準，本文件定義類群、角色與規則。壽命、繁殖與族群密度見 [09](09-life-history.md)。
 
 ## 1. 代碼
 

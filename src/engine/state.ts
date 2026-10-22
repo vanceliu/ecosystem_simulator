@@ -1,85 +1,63 @@
-import { getArchetype } from '../content/archetypes/index';
-import { MICROBIAL_PROCESSES, type MicrobeId } from '../content/microbes';
-import { LITTER_COMPOSITION, STOICHIOMETRY } from '../content/stoichiometry';
-import {
-  HARDSCAPE_SURFACE,
-  LAND_SUBSTRATES,
-  SUBSTRATES,
-  WILD_LITTER_STOCK,
-  WILD_MATERIALS,
-  WILD_SEDIMENT_NUTRIENTS,
-} from '../content/tankOptions';
-import { CO2_EQUILIBRIUM_MG_L, oxygenSaturation, pressureAtm } from './atmosphere';
+import { MICROBE_IDS, type MicrobeId } from '../content/microbes';
+import type { ParameterSet } from '../content/parameters';
+import { STATE_SUBSTANCE_IDS } from '../content/substances';
+import { oxygenSaturation, pressureAtm } from './atmosphere';
 import { dailyClimate, hourlyAmbientTemperature } from './climate';
-import {
-  computeGeometry,
-  microbialCapacities,
-  MAX_TOTAL_VOLUME_L,
-  type Geometry,
-} from './geometry';
+import { computeGeometry, microbialCapacities, type Geometry } from './geometry';
 import { targetHumidity, targetSoilMoisture } from './land';
 import { waterComposition } from './sourceWater';
 import type { Vector } from '../content/archetype';
 import { createBioContext } from './bioContext';
 import { bodyRatios, populationCod } from './biota';
-import {
-  INITIAL_MICROBE_STRAINS,
-  inoculate,
-  ORIGIN,
-  pickSuitableGenotype,
-  setupRoutes,
-  type Route,
-} from './emergence';
+import { inoculate, ORIGIN, pickSuitableGenotype, setupRoutes, type Route } from './emergence';
 import { foundBiomass, registerSpecies } from './founding';
-import { toPools } from './pools';
+import { emptySubstances, toPools } from './pools';
 import { emptyRecords } from './records';
 import { createRng, hashSeed, mix32 } from './rng';
-import type {
-  ClimateState,
-  OrganicPool,
-  Population,
-  Records,
-  SimulationState,
-  TankConfig,
-} from './types';
+import type { ClimateState, Population, Records, SimulationState, TankConfig } from './types';
 
-const MICROBE_ORDER: readonly MicrobeId[] = [
-  'heterotroph',
-  'aob',
-  'nob',
-  'denitrifier',
-  'soil_bacteria',
-  'saprotrophic_fungus',
-];
-const isLandMicrobe = (id: MicrobeId): boolean => getArchetype(id).zone === 'T';
-const LAND_MICROBE_COUNT = MICROBE_ORDER.filter(isLandMicrobe).length;
+const isLandMicrobe = (params: ParameterSet, id: MicrobeId): boolean =>
+  params.archetypes[id].zone === 'T';
 /** rng stream for setup draws, distinct from per-tick streams */
 const SETUP_STREAM = 0x5e7019;
 const ML_PER_L = 1000;
 const MG_PER_G = 1000;
 const CM2_PER_M2 = 1e4;
 const LITRES_PER_M2_CM = 10;
-/** Wild inocula fill at most this share of a habitat's microbial capacity. */
-const MAX_INITIAL_CAPACITY_SHARE = 0.5;
 
-export const emptyPool = (): OrganicPool => ({ cod: 0, n: 0, p: 0 });
+/** Organic matter as COD with its nitrogen and phosphorus, mg. */
+interface Organic {
+  cod: number;
+  n: number;
+  p: number;
+}
 
-const cellsToCod = (cells: number): number =>
-  cells * STOICHIOMETRY.cellDryMassMg.value * STOICHIOMETRY.codPerDryBiomass.value;
+const emptyOrganic = (): Organic => ({ cod: 0, n: 0, p: 0 });
 
-export function ambientDayMean(config: TankConfig, dayOfYear: number): number {
+const cellsToCod = (params: ParameterSet, cells: number): number =>
+  cells *
+  params.stoichiometry.base.cellDryMassMg.value *
+  params.stoichiometry.base.codPerDryBiomass.value;
+
+export function ambientDayMean(
+  params: ParameterSet,
+  config: TankConfig,
+  dayOfYear: number,
+): number {
   return config.placement === 'outdoor'
-    ? dailyClimate(config.location, dayOfYear).meanTemperatureC
+    ? dailyClimate(params, config.location, dayOfYear).meanTemperatureC
     : config.roomTemperatureC;
 }
 
-export function initialClimateState(config: TankConfig): ClimateState {
-  const daily = dailyClimate(config.location, config.startDayOfYear);
+export function initialClimateState(params: ParameterSet, config: TankConfig): ClimateState {
+  const daily = dailyClimate(params, config.location, config.startDayOfYear);
   return {
     dayOfYear: config.startDayOfYear,
     ambientTemperatureC:
-      config.placement === 'outdoor' ? hourlyAmbientTemperature(daily, 0) : config.roomTemperatureC,
-    ambientDayMeanC: ambientDayMean(config, config.startDayOfYear),
+      config.placement === 'outdoor'
+        ? hourlyAmbientTemperature(params, daily, 0)
+        : config.roomTemperatureC,
+    ambientDayMeanC: ambientDayMean(params, config, config.startDayOfYear),
     ambientHumidity: daily.humidity,
     dayLengthH: daily.dayLengthH,
     ppfd: 0,
@@ -90,10 +68,11 @@ export function initialClimateState(config: TankConfig): ClimateState {
   };
 }
 
-export function validateTankConfig(config: TankConfig): string[] {
+export function validateTankConfig(params: ParameterSet, config: TankConfig): string[] {
   const errors: string[] = [];
-  const geometry = computeGeometry(config);
-  if (geometry.totalVolumeL > MAX_TOTAL_VOLUME_L) errors.push('total volume exceeds 100,000 L');
+  const geometry = computeGeometry(params, config);
+  const maxVolume = params.mechanics.limits.maxTotalVolumeL;
+  if (geometry.totalVolumeL > maxVolume) errors.push(`total volume exceeds ${maxVolume} L`);
   if (config.landFraction < 0 || config.landFraction > 1) errors.push('landFraction out of range');
   if (config.waterDepthCm > config.heightCm) errors.push('water deeper than tank height');
   if (config.shading < 0 || config.shading > 0.9) errors.push('shading out of range');
@@ -103,112 +82,133 @@ export function validateTankConfig(config: TankConfig): string[] {
 
 interface WaterInoculum {
   readonly microbes: Partial<Record<MicrobeId, number>>;
-  readonly detritus: OrganicPool;
+  readonly detritus: Organic;
 }
 
 /** Biofilm microbes and organic matter on wild rocks, wood and substrate; docs/04 §5.2. */
-function wildWaterMaterials(config: TankConfig, geometry: Geometry): WaterInoculum {
+function wildWaterMaterials(
+  params: ParameterSet,
+  config: TankConfig,
+  geometry: Geometry,
+): WaterInoculum {
   const microbes: Partial<Record<MicrobeId, number>> = {};
-  const detritus = emptyPool();
+  const detritus = emptyOrganic();
   if (geometry.nominalWaterVolumeL <= 0) return { microbes, detritus };
   const add = (id: MicrobeId, cod: number): void => {
     microbes[id] = (microbes[id] ?? 0) + cod;
   };
-  const nitrifierShare = WILD_MATERIALS.nitrifierShare.value;
+  const options = params.tankOptions;
+  const wildMaterials = options.wildMaterials;
+  const base = params.stoichiometry.base;
+  const nitrifierShare = wildMaterials.nitrifierShare.value;
   const colonise = (
     surfaceM2: number,
     denitrifierShare: number,
     organicSurfaceM2: number,
   ): void => {
-    const cells = WILD_MATERIALS.biofilmBacteriaPerCm2.value * CM2_PER_M2 * surfaceM2;
-    add('aob', cellsToCod(cells * nitrifierShare));
-    add('nob', cellsToCod(cells * nitrifierShare));
-    add('denitrifier', cellsToCod(cells * denitrifierShare));
-    add('heterotroph', cellsToCod(cells * (1 - 2 * nitrifierShare - denitrifierShare)));
-    const organic = WILD_MATERIALS.biofilmOrganicPerM2.value * organicSurfaceM2;
+    const cells = wildMaterials.biofilmBacteriaPerCm2.value * CM2_PER_M2 * surfaceM2;
+    add('aob', cellsToCod(params, cells * nitrifierShare));
+    add('nob', cellsToCod(params, cells * nitrifierShare));
+    add('denitrifier', cellsToCod(params, cells * denitrifierShare));
+    add('heterotroph', cellsToCod(params, cells * (1 - 2 * nitrifierShare - denitrifierShare)));
+    const organic = wildMaterials.biofilmOrganicPerM2.value * organicSurfaceM2;
     detritus.cod += organic;
-    detritus.n += organic * STOICHIOMETRY.nPerBiomassCod.value;
-    detritus.p += organic * STOICHIOMETRY.pPerBiomassCod.value;
+    detritus.n += organic * base.nPerBiomassCod.value;
+    detritus.p += organic * base.pPerBiomassCod.value;
   };
   for (const item of config.hardscape) {
     if (item.source.origin !== 'wild') continue;
-    const surface = HARDSCAPE_SURFACE[item.type].value * geometry.waterFloorAreaM2;
+    const surface = options.hardscapeSurface[item.type].value * geometry.waterFloorAreaM2;
     colonise(surface, 0, surface);
   }
   if (config.substrate !== 'bare' && config.substrateSource.origin === 'wild') {
     const organicDepth = Math.min(
       config.substrateDepthCm,
-      WILD_MATERIALS.organicSubstrateDepthCm.value,
+      wildMaterials.organicSubstrateDepthCm.value,
     );
     const organicSurface =
-      SUBSTRATES[config.substrate].surfacePerFloorPerCm.value *
+      options.substrates[config.substrate].surfacePerFloorPerCm.value *
       organicDepth *
       geometry.waterFloorAreaM2;
-    colonise(geometry.substrateSurfaceM2, WILD_MATERIALS.denitrifierShare.value, organicSurface);
+    colonise(geometry.substrateSurfaceM2, wildMaterials.denitrifierShare.value, organicSurface);
   }
   return { microbes, detritus };
 }
 
 function wildSoilMicrobes(
+  params: ParameterSet,
   config: TankConfig,
   geometry: Geometry,
 ): Partial<Record<MicrobeId, number>> {
   if (config.landSubstrate === null || geometry.landAreaM2 <= 0) return {};
-  const capacity = microbialCapacities(geometry, 0, config.landSubstrateDepthCm).soil;
+  const capacity = microbialCapacities(params, geometry, 0, config.landSubstrateDepthCm).soil;
   if (config.landSubstrateSource.origin === 'clean') {
+    const landMicrobes = MICROBE_IDS.filter((id) => isLandMicrobe(params, id)).length;
     const each =
-      (capacity * MICROBIAL_PROCESSES.initialSoilMicrobeFraction.value) / LAND_MICROBE_COUNT;
+      (capacity * params.microbes.processes.initialSoilMicrobeFraction.value) / landMicrobes;
     return { soil_bacteria: each, saprotrophic_fungus: each };
   }
+  const wildMaterials = params.tankOptions.wildMaterials;
   const cells =
-    WILD_MATERIALS.soilBacteriaPerG.value *
-    WILD_MATERIALS.soilBulkDensity.value *
+    wildMaterials.soilBacteriaPerG.value *
+    wildMaterials.soilBulkDensity.value *
     config.landSubstrateDepthCm *
     CM2_PER_M2 *
     geometry.landAreaM2;
-  const bacteria = cellsToCod(cells);
-  const fungus = bacteria * WILD_MATERIALS.fungusToBacteriaRatio.value;
-  const scale = Math.min(1, (capacity * MAX_INITIAL_CAPACITY_SHARE) / (bacteria + fungus));
+  const bacteria = cellsToCod(params, cells);
+  const fungus = bacteria * wildMaterials.fungusToBacteriaRatio.value;
+  const scale = Math.min(
+    1,
+    (capacity * params.mechanics.microbes.maxInitialCapacityShare) / (bacteria + fungus),
+  );
   return { soil_bacteria: bacteria * scale, saprotrophic_fungus: fungus * scale };
 }
 
 /** docs/04 §3.3 exchangeable N and P carried by the substrate, mg. */
-function sedimentNutrients(config: TankConfig, geometry: Geometry): { n: number; p: number } {
+function sedimentNutrients(
+  params: ParameterSet,
+  config: TankConfig,
+  geometry: Geometry,
+): { n: number; p: number } {
   if (config.substrate === 'bare' || geometry.nominalWaterVolumeL <= 0) return { n: 0, p: 0 };
-  const spec = SUBSTRATES[config.substrate];
+  const spec = params.tankOptions.substrates[config.substrate];
+  const wildNutrients = params.tankOptions.wildSedimentNutrients;
   const litres = geometry.waterFloorAreaM2 * config.substrateDepthCm * LITRES_PER_M2_CM;
   const kg = litres * spec.bulkDensity.value;
   const inert = spec.exchangeableN.value === 0 && spec.exchangeableP.value === 0;
   const wild = config.substrateSource.origin === 'wild' && inert;
   return {
-    n: kg * (wild ? WILD_SEDIMENT_NUTRIENTS.exchangeableN.value : spec.exchangeableN.value),
-    p: kg * (wild ? WILD_SEDIMENT_NUTRIENTS.exchangeableP.value : spec.exchangeableP.value),
+    n: kg * (wild ? wildNutrients.exchangeableN.value : spec.exchangeableN.value),
+    p: kg * (wild ? wildNutrients.exchangeableP.value : spec.exchangeableP.value),
   };
 }
 
-function initialLitter(config: TankConfig, geometry: Geometry): OrganicPool {
-  if (config.landSubstrate === null) return emptyPool();
+function initialLitter(params: ParameterSet, config: TankConfig, geometry: Geometry): Organic {
+  if (config.landSubstrate === null) return emptyOrganic();
+  const options = params.tankOptions;
   const dryG =
     config.landSubstrateSource.origin === 'wild'
-      ? WILD_LITTER_STOCK[config.location.latitudeZone].value
-      : LAND_SUBSTRATES[config.landSubstrate].initialLitterDryG.value;
+      ? options.wildLitterStock[config.location.latitudeZone].value
+      : options.landSubstrates[config.landSubstrate].initialLitterDryG.value;
   const dryMg = dryG * geometry.landAreaM2 * MG_PER_G;
+  const litter = params.stoichiometry.litter;
   return {
-    cod: dryMg * LITTER_COMPOSITION.codPerDryMass.value,
-    n: dryMg * LITTER_COMPOSITION.nPerDryMass.value,
-    p: dryMg * LITTER_COMPOSITION.pPerDryMass.value,
+    cod: dryMg * litter.codPerDryMass.value,
+    n: dryMg * litter.nPerDryMass.value,
+    p: dryMg * litter.pPerDryMass.value,
   };
 }
 
 function capWaterMicrobes(
+  params: ParameterSet,
   microbes: Partial<Record<MicrobeId, number>>,
   geometry: Geometry,
   volume: number,
 ): Partial<Record<MicrobeId, number>> {
-  const capacities = microbialCapacities(geometry, volume, 0);
+  const capacities = microbialCapacities(params, geometry, volume, 0);
   const limit = (ids: readonly MicrobeId[], capacity: number): void => {
     const total = ids.reduce((sum, id) => sum + (microbes[id] ?? 0), 0);
-    const allowed = capacity * MAX_INITIAL_CAPACITY_SHARE;
+    const allowed = capacity * params.mechanics.microbes.maxInitialCapacityShare;
     if (total <= allowed || total <= 0) return;
     for (const id of ids) microbes[id] = ((microbes[id] ?? 0) * allowed) / total;
   };
@@ -219,34 +219,52 @@ function capWaterMicrobes(
 }
 
 /** docs/04 §3; all water and land pools are total masses in mg. */
-export function createInitialState(config: TankConfig, worldSeed: string): SimulationState {
-  const errors = validateTankConfig(config);
+export function createInitialState(
+  params: ParameterSet,
+  config: TankConfig,
+  worldSeed: string,
+): SimulationState {
+  const errors = validateTankConfig(params, config);
   if (errors.length > 0) throw new Error(`Invalid tank config: ${errors.join('; ')}`);
-  const geometry = computeGeometry(config);
+  const geometry = computeGeometry(params, config);
   const volume = geometry.nominalWaterVolumeL;
-  const water = waterComposition(config);
-  const climate = initialClimateState(config);
+  const water = waterComposition(params, config);
+  const climate = initialClimateState(params, config);
   const waterTemperature =
     config.heaterSetpointC !== null && config.heaterSetpointC > climate.ambientDayMeanC
       ? config.heaterSetpointC
       : Math.max(0, climate.ambientDayMeanC);
   const atm = pressureAtm(config.location.altitudeM);
-  const wild = wildWaterMaterials(config, geometry);
-  const sediment = sedimentNutrients(config, geometry);
+  const wild = wildWaterMaterials(params, config, geometry);
+  const sediment = sedimentNutrients(params, config, geometry);
+  const litter = initialLitter(params, config, geometry);
 
   const waterMicrobes: Partial<Record<MicrobeId, number>> = {};
-  for (const id of MICROBE_ORDER) {
-    if (isLandMicrobe(id) || volume <= 0) continue;
+  for (const id of MICROBE_IDS) {
+    if (isLandMicrobe(params, id) || volume <= 0) continue;
     waterMicrobes[id] =
-      cellsToCod((water.inoculum[id] ?? 0) * ML_PER_L * volume) + (wild.microbes[id] ?? 0);
+      cellsToCod(params, (water.inoculum[id] ?? 0) * ML_PER_L * volume) + (wild.microbes[id] ?? 0);
   }
   const startingCod = {
-    ...capWaterMicrobes(waterMicrobes, geometry, volume),
-    ...wildSoilMicrobes(config, geometry),
+    ...capWaterMicrobes(params, waterMicrobes, geometry, volume),
+    ...wildSoilMicrobes(params, config, geometry),
   };
 
+  const substances = emptySubstances();
+  for (const id of STATE_SUBSTANCE_IDS) substances[id] = (water.perLitre[id] ?? 0) * volume;
+  substances.water_o2 = oxygenSaturation(waterTemperature, water.salinityPpt, atm) * volume;
+  substances.water_co2 = params.physics.co2EquilibriumMgL.value * volume;
+  substances.detritus_cod = wild.detritus.cod;
+  substances.detritus_n = wild.detritus.n;
+  substances.detritus_p = wild.detritus.p;
+  substances.sediment_tan = sediment.n;
+  substances.sediment_po4 = sediment.p;
+  substances.litter_cod = litter.cod;
+  substances.litter_n = litter.n;
+  substances.litter_p = litter.p;
+
   const state: SimulationState = {
-    schema: 1,
+    schema: 2,
     worldSeed,
     seedHash: hashSeed(worldSeed),
     tick: 0,
@@ -254,22 +272,6 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
     water: {
       volumeL: volume,
       temperatureC: waterTemperature,
-      saltMg: water.salinityPpt * MG_PER_G * volume,
-      alkalinityMg: water.kh * STOICHIOMETRY.caco3PerDkh.value * volume,
-      o2: oxygenSaturation(waterTemperature, water.salinityPpt, atm) * volume,
-      co2: CO2_EQUILIBRIUM_MG_L * volume,
-      tan: water.tan * volume,
-      no2: 0,
-      no3: water.no3 * volume,
-      po4: water.po4 * volume,
-      sio2: water.sio2 * volume,
-      ca: water.ca * volume,
-      substrateCod: water.labileCod * volume,
-      food: emptyPool(),
-      detritus: wild.detritus,
-      inert: { cod: water.refractoryCod * volume, n: 0, p: 0 },
-      sedimentTan: sediment.n,
-      sedimentPo4: sediment.p,
       iceCover: false,
       snowOnIce: false,
     },
@@ -277,11 +279,8 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       airTemperatureC: climate.ambientTemperatureC,
       humidity: 0,
       soilMoisture: 0,
-      litter: initialLitter(config, geometry),
-      soilSubstrateCod: 0,
-      soilTan: 0,
-      soilPo4: 0,
     },
+    substances,
     climate,
     species: {},
     populations: [],
@@ -309,15 +308,15 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
   state.land.humidity = targetHumidity(state);
   state.land.soilMoisture = geometry.landAreaM2 > 0 ? targetSoilMoisture(state) : 0;
   const rng = createRng(mix32(state.seedHash, SETUP_STREAM));
-  const context = createBioContext(state, toPools(state), geometry, 0);
+  const context = createBioContext(params, state, toPools(params, state), geometry, 0);
   const routes = setupRoutes(config);
-  for (const archetypeId of MICROBE_ORDER) {
+  for (const archetypeId of MICROBE_IDS) {
     const cod = startingCod[archetypeId] ?? 0;
     if (!(cod > 0)) continue;
-    const archetype = getArchetype(archetypeId);
+    const archetype = params.archetypes[archetypeId];
     const vector = microbeVector(archetype.zone === 'T', routes);
     const strains: string[] = [];
-    for (let draw = 0; draw < INITIAL_MICROBE_STRAINS; draw += 1) {
+    for (let draw = 0; draw < params.mechanics.emergence.initialMicrobeStrains; draw += 1) {
       const speciesId = pickSuitableGenotype(context, archetype, rng);
       if (speciesId !== null) strains.push(speciesId);
     }
@@ -326,9 +325,10 @@ export function createInitialState(config: TankConfig, worldSeed: string): Simul
       foundBiomass(state, speciesId, vector, cod / strains.length);
     }
   }
-  inoculate(createBioContext(state, toPools(state), geometry, 0), rng);
+  inoculate(createBioContext(params, state, toPools(params, state), geometry, 0), rng);
   state.ledger = { nIn: 0, nOut: 0, pIn: 0, pOut: 0 };
-  for (const population of state.populations) population.dayStartCod = populationCod(population);
+  for (const population of state.populations)
+    population.dayStartCod = populationCod(params, population);
   return state;
 }
 
@@ -385,17 +385,11 @@ export function copyRecords(records: Records): Records {
 
 /** Deep copy of the mutable state; the config and species records are immutable and shared. */
 export function cloneState(state: SimulationState): SimulationState {
-  const water = state.water;
-  const land = state.land;
   return {
     ...state,
-    water: {
-      ...water,
-      food: { ...water.food },
-      detritus: { ...water.detritus },
-      inert: { ...water.inert },
-    },
-    land: { ...land, litter: { ...land.litter } },
+    water: { ...state.water },
+    land: { ...state.land },
+    substances: { ...state.substances },
     climate: { ...state.climate },
     species: { ...state.species },
     populations: copyPopulations(state.populations),
@@ -406,42 +400,34 @@ export function cloneState(state: SimulationState): SimulationState {
 }
 
 /** Living N or P held by all populations, mg. */
-function livingElement(state: SimulationState, element: 'n' | 'p'): number {
+function livingElement(params: ParameterSet, state: SimulationState, element: 'n' | 'p'): number {
   return state.populations.reduce(
     (sum, population) =>
-      sum + populationCod(population) * bodyRatios(getArchetype(population.archetypeId))[element],
+      sum +
+      populationCod(params, population) *
+        bodyRatios(params, params.archetypes[population.archetypeId])[element],
     0,
   );
 }
 
+/** Mass of an element held in substance pools, mg. */
+function substanceElement(
+  params: ParameterSet,
+  state: SimulationState,
+  element: 'N' | 'P',
+): number {
+  let total = 0;
+  for (const id of STATE_SUBSTANCE_IDS)
+    if (params.substances[id].element === element) total += state.substances[id];
+  return total;
+}
+
 /** Total nitrogen held in the tank, mg. */
-export function totalNitrogen(state: SimulationState): number {
-  const w = state.water;
-  return (
-    w.tan +
-    w.sedimentTan +
-    w.no2 +
-    w.no3 +
-    w.food.n +
-    w.detritus.n +
-    w.inert.n +
-    state.land.litter.n +
-    state.land.soilTan +
-    livingElement(state, 'n')
-  );
+export function totalNitrogen(params: ParameterSet, state: SimulationState): number {
+  return substanceElement(params, state, 'N') + livingElement(params, state, 'n');
 }
 
 /** Total phosphorus held in the tank, mg. */
-export function totalPhosphorus(state: SimulationState): number {
-  const w = state.water;
-  return (
-    w.po4 +
-    w.sedimentPo4 +
-    w.food.p +
-    w.detritus.p +
-    w.inert.p +
-    state.land.litter.p +
-    state.land.soilPo4 +
-    livingElement(state, 'p')
-  );
+export function totalPhosphorus(params: ParameterSet, state: SimulationState): number {
+  return substanceElement(params, state, 'P') + livingElement(params, state, 'p');
 }

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { CLIMATES } from '../../src/content/climate';
 import {
   DAYS_PER_YEAR,
   dailyClimate,
@@ -9,6 +8,7 @@ import {
 } from '../../src/engine/climate';
 import { createRng } from '../../src/engine/rng';
 import { location } from './fixtures';
+import { params } from '../params';
 
 const MID_JULY = 196;
 const MID_JANUARY = 15;
@@ -23,33 +23,36 @@ describe('daily climate (docs/11 §4)', () => {
 
   it('reproduces warm- and cold-month means at the station altitude', () => {
     const atStation = { ...minneapolis, altitudeM: 256 };
-    expect(dailyClimate(atStation, MID_JULY).meanTemperatureC).toBeCloseTo(23.5, 0);
-    expect(dailyClimate(atStation, MID_JANUARY).meanTemperatureC).toBeCloseTo(-8.8, 0);
+    expect(dailyClimate(params, atStation, MID_JULY).meanTemperatureC).toBeCloseTo(23.5, 0);
+    expect(dailyClimate(params, atStation, MID_JANUARY).meanTemperatureC).toBeCloseTo(-8.8, 0);
   });
 
   it('cools with altitude', () => {
     const high = { ...minneapolis, altitudeM: 2256 };
     const low = { ...minneapolis, altitudeM: 256 };
     expect(
-      dailyClimate(low, MID_JULY).meanTemperatureC - dailyClimate(high, MID_JULY).meanTemperatureC,
+      dailyClimate(params, low, MID_JULY).meanTemperatureC -
+        dailyClimate(params, high, MID_JULY).meanTemperatureC,
     ).toBeCloseTo(13, 6);
   });
 
   it('flips the seasons in the southern hemisphere', () => {
     const south = { ...minneapolis, hemisphere: 'south' as const };
-    expect(dailyClimate(south, MID_JANUARY).meanTemperatureC).toBeGreaterThan(
-      dailyClimate(south, MID_JULY).meanTemperatureC,
+    expect(dailyClimate(params, south, MID_JANUARY).meanTemperatureC).toBeGreaterThan(
+      dailyClimate(params, south, MID_JULY).meanTemperatureC,
     );
     expect(equivalentMonth(MID_JANUARY, south)).toBe(7);
   });
 
   it('peaks in mid-afternoon', () => {
-    const daily = dailyClimate(minneapolis, MID_JULY);
-    expect(hourlyAmbientTemperature(daily, 15)).toBeGreaterThan(hourlyAmbientTemperature(daily, 3));
+    const daily = dailyClimate(params, minneapolis, MID_JULY);
+    expect(hourlyAmbientTemperature(params, daily, 15)).toBeGreaterThan(
+      hourlyAmbientTemperature(params, daily, 3),
+    );
   });
 
   it('allocates monthly rainfall that sums to the annual total', () => {
-    for (const [key, normal] of Object.entries(CLIMATES)) {
+    for (const [key, normal] of Object.entries(params.climate.normals)) {
       const [zone, moisture, continentality] = key.split(':');
       const place = {
         ...minneapolis,
@@ -60,6 +63,7 @@ describe('daily climate (docs/11 §4)', () => {
       let total = 0;
       for (let month = 1; month <= 12; month += 1) {
         total += dailyClimate(
+          params,
           place,
           Math.round((month - 0.5) * (DAYS_PER_YEAR / 12)),
         ).monthlyPrecipMm;
@@ -74,8 +78,8 @@ describe('daily climate (docs/11 §4)', () => {
     let wet = 0;
     let dry = 0;
     for (let index = 0; index < 2000; index += 1) {
-      wet += drawRainfall(dailyClimate(darwin, MID_JULY), rng);
-      dry += drawRainfall(dailyClimate(darwin, MID_JANUARY), rng);
+      wet += drawRainfall(params, dailyClimate(params, darwin, MID_JULY), rng);
+      dry += drawRainfall(params, dailyClimate(params, darwin, MID_JANUARY), rng);
     }
     expect(wet).toBeGreaterThan(dry * 5);
   });

@@ -1,11 +1,9 @@
 import type { Archetype } from '../content/archetype';
+import type { ParameterSet } from '../content/parameters';
 import { encodeGenotype, type GenotypeCode } from './genotype';
 import type { RandomSource } from './hash';
 import { lociFor, type LocusDef } from './loci';
 import { derivePhenotype, type ToleranceRange } from './phenotype';
-
-/** docs/05 §3: minimum environmental weight factor */
-const MIN_ENVIRONMENT_FACTOR = 0.05;
 
 export interface SamplingEnvironment {
   readonly temperatureC: number;
@@ -14,11 +12,6 @@ export interface SamplingEnvironment {
   /** longest adult body the enclosure can hold (docs/09 §7); omit for no limit */
   readonly maxLengthMm?: number;
 }
-
-/** docs/04 §5.1: share of the salinity window over which performance ramps down at each limit */
-export const SALINITY_RAMP_SHARE = 0.2;
-/** docs/04 §5.1: pH units around the optimum at full performance */
-export const PH_PLATEAU = 0.8;
 
 /** docs/04 §5.1 temperature curve: Gaussian around opt, zero outside [min, max]. */
 export function toleranceFactor(value: number, range: ToleranceRange): number {
@@ -37,16 +30,17 @@ function plateau(value: number, min: number, low: number, high: number, max: num
 }
 
 /** docs/04 §5.1 salinity response; a window starting at 0 ppt has no lower ramp. */
-export function salinityFactor(value: number, range: ToleranceRange): number {
-  const ramp = (range.max - range.min) * SALINITY_RAMP_SHARE;
+export function salinityFactor(params: ParameterSet, value: number, range: ToleranceRange): number {
+  const ramp = (range.max - range.min) * params.generation.tolerance.salinityRampShare;
   const low = range.min <= 0 ? range.min : range.min + ramp;
   return plateau(value, range.min, low, range.max - ramp, range.max);
 }
 
-/** docs/04 §5.1 pH response: full within ±PH_PLATEAU of the optimum. */
-export function phResponse(value: number, range: ToleranceRange): number {
-  const low = Math.max(range.min, range.opt - PH_PLATEAU);
-  const high = Math.min(range.max, range.opt + PH_PLATEAU);
+/** docs/04 §5.1 pH response: full within ±phPlateau of the optimum. */
+export function phResponse(params: ParameterSet, value: number, range: ToleranceRange): number {
+  const plateauWidth = params.generation.tolerance.phPlateau;
+  const low = Math.max(range.min, range.opt - plateauWidth);
+  const high = Math.min(range.max, range.opt + plateauWidth);
   return plateau(value, range.min, low, high, range.max);
 }
 
@@ -62,6 +56,7 @@ function pick(weights: readonly number[], random: RandomSource): number {
 
 /** Phenotype of a genotype that differs from `alleles` only at `position`. */
 function variantPhenotype(
+  params: ParameterSet,
   archetype: Archetype,
   alleles: readonly number[],
   position: number,
@@ -69,10 +64,11 @@ function variantPhenotype(
 ) {
   const variant = [...alleles];
   variant[position] = allele;
-  return derivePhenotype(archetype, encodeGenotype(archetype, variant));
+  return derivePhenotype(params, archetype, encodeGenotype(params, archetype, variant));
 }
 
 function environmentWeights(
+  params: ParameterSet,
   archetype: Archetype,
   loci: readonly LocusDef[],
   alleles: readonly number[],
@@ -81,9 +77,10 @@ function environmentWeights(
 ): number[] {
   const locus = loci[position];
   if (locus === undefined) return [];
+  const minFactor = params.generation.sampling.minEnvironmentFactor;
   return locus.baseWeights.map((weight, allele) => {
     if (weight === 0) return 0;
-    const phenotype = variantPhenotype(archetype, alleles, position, allele);
+    const phenotype = variantPhenotype(params, archetype, alleles, position, allele);
     switch (locus.id) {
       case 'size':
         return environment.maxLengthMm !== undefined && phenotype.lengthMm > environment.maxLengthMm
@@ -92,21 +89,18 @@ function environmentWeights(
       case 'thermal':
         return (
           weight *
-          Math.max(
-            MIN_ENVIRONMENT_FACTOR,
-            toleranceFactor(environment.temperatureC, phenotype.temperatureC),
-          )
+          Math.max(minFactor, toleranceFactor(environment.temperatureC, phenotype.temperatureC))
         );
       case 'salinity':
         return phenotype.salinityPpt === undefined
           ? weight
           : weight *
               Math.max(
-                MIN_ENVIRONMENT_FACTOR,
-                salinityFactor(environment.salinityPpt, phenotype.salinityPpt),
+                minFactor,
+                salinityFactor(params, environment.salinityPpt, phenotype.salinityPpt),
               );
       case 'ph':
-        return weight * Math.max(MIN_ENVIRONMENT_FACTOR, phResponse(environment.ph, phenotype.ph));
+        return weight * Math.max(minFactor, phResponse(params, environment.ph, phenotype.ph));
       default:
         return weight;
     }
@@ -118,24 +112,25 @@ function environmentWeights(
  * one, base weights apply (player release). Returns null when no size fits the enclosure.
  */
 export function sampleGenotype(
+  params: ParameterSet,
   archetype: Archetype,
   random: RandomSource,
   environment?: SamplingEnvironment,
 ): GenotypeCode | null {
-  const loci = lociFor(archetype);
+  const loci = lociFor(params, archetype);
   const alleles = loci.map((locus) => pick(locus.baseWeights, random));
-  if (environment === undefined) return encodeGenotype(archetype, alleles);
+  if (environment === undefined) return encodeGenotype(params, archetype, alleles);
   for (const id of ['size', 'thermal', 'salinity', 'ph'] as const) {
     const position = loci.findIndex((locus) => locus.id === id);
     if (position < 0) continue;
-    const weights = environmentWeights(archetype, loci, alleles, position, environment);
+    const weights = environmentWeights(params, archetype, loci, alleles, position, environment);
     if (weights.every((weight) => weight <= 0)) return null;
     alleles[position] = pick(weights, random);
   }
-  const code = encodeGenotype(archetype, alleles);
+  const code = encodeGenotype(params, archetype, alleles);
   if (
     environment.maxLengthMm !== undefined &&
-    derivePhenotype(archetype, code).lengthMm > environment.maxLengthMm
+    derivePhenotype(params, archetype, code).lengthMm > environment.maxLengthMm
   ) {
     return null;
   }

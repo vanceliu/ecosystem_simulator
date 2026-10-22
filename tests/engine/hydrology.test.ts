@@ -1,26 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { computeGeometry, totalNitrogen } from '../../src/engine/index';
-import { TIDE_AMPLITUDE } from '../../src/engine/hydrology';
 import { tank } from './fixtures';
 import { runDays } from './simulation';
+import { params } from '../params';
 
 describe('tides (docs/11 §5.3)', () => {
   const config = tank(
     { zone: 'tropical', moisture: 'humid', habitat: 'mangrove', realm: 'IM' },
     'indoor',
   );
-  const nominal = computeGeometry(config).nominalWaterVolumeL;
+  const nominal = computeGeometry(params, config).nominalWaterVolumeL;
   const run = runDays(config, 'tide', 3, 0, 9);
 
   it('moves the water level within the tidal amplitude', () => {
     expect(config.tide).toBe(true);
     expect(run.minima.volume).toBeLessThan(nominal * 0.7);
-    expect(run.minima.volume).toBeGreaterThanOrEqual(nominal * (1 - TIDE_AMPLITUDE) - 1e-6);
+    expect(run.minima.volume).toBeGreaterThanOrEqual(
+      nominal * (1 - params.mechanics.water.tideAmplitude) - 1e-6,
+    );
   });
 
   it('accounts for nitrogen exchanged with the sea', () => {
-    const expected = totalNitrogen(run.initial) + run.final.ledger.nIn - run.final.ledger.nOut;
-    expect(Math.abs(totalNitrogen(run.final) - expected) / expected).toBeLessThan(1e-9);
+    const expected =
+      totalNitrogen(params, run.initial) + run.final.ledger.nIn - run.final.ledger.nOut;
+    expect(Math.abs(totalNitrogen(params, run.final) - expected) / expected).toBeLessThan(1e-9);
   });
 });
 
@@ -31,7 +34,7 @@ describe('indoor seasonal drying (docs/11 §5.3)', () => {
       'indoor',
       { startDayOfYear: 1 },
     );
-    const nominal = computeGeometry(config).nominalWaterVolumeL;
+    const nominal = computeGeometry(params, config).nominalWaterVolumeL;
     const dry = runDays(config, 'drying', 60, 0, 9);
     expect(dry.final.water.volumeL).toBeLessThan(nominal * 0.1);
     const wet = runDays({ ...config, startDayOfYear: 152 }, 'refill', 60, 0, 9);

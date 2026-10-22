@@ -9,6 +9,7 @@ import {
 import { clearSkyPpfd, dayLengthHours, noonClearSkyIrradiance } from '../../src/engine/astronomy';
 import { computeGeometry } from '../../src/engine/geometry';
 import { CYCLING_TANK } from './fixtures';
+import { params } from '../params';
 
 describe('atmosphere (docs/11 §3)', () => {
   it.each([
@@ -34,7 +35,7 @@ describe('atmosphere (docs/11 §3)', () => {
   });
 
   it('applies the 6.5 °C/km lapse rate', () => {
-    expect(lapseAdjustedTemperature(20, 0, 2000)).toBeCloseTo(7, 6);
+    expect(lapseAdjustedTemperature(params, 20, 0, 2000)).toBeCloseTo(7, 6);
   });
 
   it('matches the Emerson free-ammonia fraction at pH 7, 25 °C', () => {
@@ -42,8 +43,8 @@ describe('atmosphere (docs/11 §3)', () => {
   });
 
   it('derives pH from carbonate hardness and CO2', () => {
-    expect(carbonatePh(4, 3)).toBeCloseTo(7.67, 1);
-    expect(carbonatePh(4, 30)).toBeLessThan(carbonatePh(4, 3));
+    expect(carbonatePh(params, 4, 3)).toBeCloseTo(7.67, 1);
+    expect(carbonatePh(params, 4, 30)).toBeLessThan(carbonatePh(params, 4, 3));
   });
 });
 
@@ -67,10 +68,10 @@ describe('astronomy (docs/11 §3.2)', () => {
   });
 
   it('reaches about 2000 µmol/m²/s at a tropical clear-sky noon', () => {
-    const ppfd = clearSkyPpfd(10, 80, 12, 0);
+    const ppfd = clearSkyPpfd(params, 10, 80, 12, 0);
     expect(ppfd).toBeGreaterThan(1700);
     expect(ppfd).toBeLessThan(2300);
-    expect(clearSkyPpfd(10, 80, 2, 0)).toBe(0);
+    expect(clearSkyPpfd(params, 10, 80, 2, 0)).toBe(0);
   });
 
   it('increases irradiance with altitude', () => {
@@ -80,7 +81,7 @@ describe('astronomy (docs/11 §3.2)', () => {
 
 describe('geometry (docs/04 §3.1)', () => {
   it('derives areas and volumes from tank dimensions', () => {
-    const geometry = computeGeometry({
+    const geometry = computeGeometry(params, {
       ...CYCLING_TANK,
       lengthCm: 60,
       widthCm: 30,
@@ -95,7 +96,7 @@ describe('geometry (docs/04 §3.1)', () => {
   });
 
   it('has no water in a pure terrarium', () => {
-    const geometry = computeGeometry({ ...CYCLING_TANK, landFraction: 1 });
+    const geometry = computeGeometry(params, { ...CYCLING_TANK, landFraction: 1 });
     expect(geometry.nominalWaterVolumeL).toBe(0);
     expect(geometry.surfaceAreaM2).toBe(0);
   });

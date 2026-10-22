@@ -1,12 +1,9 @@
 import type { Archetype } from '../content/archetype';
+import type { ParameterSet } from '../content/parameters';
 import { decodeGenotype, encodeGenotype, type GenotypeCode } from './genotype';
 import type { RandomSource } from './hash';
 import { lociFor } from './loci';
 
-/** docs/05 §5 */
-const MUTATION_LOCUS_SHARE = 0.15;
-const TWO_LOCI_SHARE = 0.1;
-const REVERT_SHARE = 0.5;
 const NO_MUTATION = 0;
 
 const randomIndex = (count: number, random: RandomSource): number =>
@@ -14,29 +11,31 @@ const randomIndex = (count: number, random: RandomSource): number =>
 
 /** Returns a mutated genotype that differs from `code` at one or two loci. */
 export function mutateGenotype(
+  params: ParameterSet,
   archetype: Archetype,
   code: GenotypeCode,
   random: RandomSource,
 ): GenotypeCode {
-  const loci = lociFor(archetype);
-  const alleles = [...decodeGenotype(archetype, code).alleles];
+  const shares = params.generation.mutation;
+  const loci = lociFor(params, archetype);
+  const alleles = [...decodeGenotype(params, archetype, code).alleles];
   const mutationPosition = loci.findIndex((locus) => locus.id === 'mutation');
 
-  if (random.next() < MUTATION_LOCUS_SHARE) {
+  if (random.next() < shares.mutationLocusShare) {
     const current = alleles[mutationPosition] ?? NO_MUTATION;
     const kinds = loci[mutationPosition]?.labelsZh.length ?? 1;
-    if (current !== NO_MUTATION && random.next() < REVERT_SHARE) {
+    if (current !== NO_MUTATION && random.next() < shares.revertShare) {
       alleles[mutationPosition] = NO_MUTATION;
     } else {
       let next = 1 + randomIndex(kinds - 1, random);
       if (next === current) next = (next % (kinds - 1)) + 1;
       alleles[mutationPosition] = next;
     }
-    return encodeGenotype(archetype, alleles);
+    return encodeGenotype(params, archetype, alleles);
   }
 
   const candidates = loci.map((_, index) => index).filter((index) => index !== mutationPosition);
-  const changes = random.next() < TWO_LOCI_SHARE ? 2 : 1;
+  const changes = random.next() < shares.twoLociShare ? 2 : 1;
   const chosen = new Set<number>();
   while (chosen.size < changes) chosen.add(candidates[randomIndex(candidates.length, random)] ?? 0);
   for (const position of chosen) {
@@ -53,5 +52,5 @@ export function mutateGenotype(
       alleles[position] = (current + offset) % count;
     }
   }
-  return encodeGenotype(archetype, alleles);
+  return encodeGenotype(params, archetype, alleles);
 }

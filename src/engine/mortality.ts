@@ -1,7 +1,6 @@
 import type { Archetype } from '../content/archetype';
-import { getArchetype } from '../content/archetypes/index';
-import { NEGLIGIBLE_SENESCENCE_HAZARD } from '../content/physiology';
-import { STOICHIOMETRY } from '../content/stoichiometry';
+import type { ParameterSet } from '../content/parameters';
+import { DETRITUS, INERT, LITTER } from '../content/substances';
 import { gompertzHazard, type Phenotype } from '../generation/index';
 import type { BioContext } from './bioContext';
 import {
@@ -17,37 +16,10 @@ import {
   TICKS_PER_DAY,
   waterFraction,
 } from './biota';
-import { addTerm, type Process } from './fluxes';
-import { cohortKey, LAND_LITTER, POOL, populationKey, WATER_DETRITUS, WATER_INERT } from './pools';
+import { addTerm, type Process, type Stoichiometry } from './fluxes';
+import { cohortKey, populationKey } from './pools';
 import type { AgeCohort, BiomassPopulation, CohortPopulation, Population } from './types';
 
-/** docs/04 §5.8 additional mortality per tick */
-export const STRESS = {
-  ammonia: 0.02,
-  nitrite: 0.01,
-  hypoxia: 0.05,
-  outOfTolerance: 0.05,
-  starvation: 0.03,
-  desiccation: 0.02,
-  noLand: 0.2,
-  noWater: 1,
-  noUvb: 0.002,
-  escape: 0.05,
-} as const;
-/** docs/04 §5.8: starvation below this share of the cohort's peak body mass */
-export const STARVATION_MASS_SHARE = 0.5;
-/** docs/04 §5.8: reptiles without UVB for this many game days */
-export const UVB_DEFICIT_DAYS = 30;
-/** docs/04 §5.7: semelparous parents die within this many game days of breeding */
-export const SEMELPAROUS_DEATH_DAYS = 3;
-/** docs/04 §5.7: clonal collapse mortality, d⁻¹ */
-export const CLONAL_COLLAPSE_HAZARD = 0.2;
-/** docs/04 §5.5: coral mortality multiplier after 14 days with Z < 0.2 */
-export const BLEACHED_MORTALITY_FACTOR = 5;
-export const BLEACHED_DAYS = 14;
-
-const INERT_FRACTION = STOICHIOMETRY.inertFractionOfDecay.value;
-const N_INERT = STOICHIOMETRY.nPerInertCod.value;
 const SOIL_MICROBES = new Set(['soil_bacteria', 'saprotrophic_fungus']);
 
 /** Toxicity, oxygen and tolerance stress per tick (docs/04 §5.8). */
@@ -57,21 +29,22 @@ function waterStress(
   phenotype: Phenotype,
   w: number,
 ): number {
+  const mortality = context.params.mechanics.mortality;
   if (w <= 0 || !context.media.hasWater) return 0;
   let stress = 0;
   if (phenotype.nh3MaxMgL !== undefined && context.freeAmmoniaMgL > phenotype.nh3MaxMgL)
-    stress += STRESS.ammonia * (context.freeAmmoniaMgL / phenotype.nh3MaxMgL - 1);
+    stress += mortality.stress.ammonia * (context.freeAmmoniaMgL / phenotype.nh3MaxMgL - 1);
   const volume = context.space.waterVolumeL;
-  const no2 = (context.pools.get(POOL.no2) ?? 0) / volume;
+  const no2 = (context.pools.get('water_no2') ?? 0) / volume;
   if (phenotype.no2MaxMgL !== undefined && no2 > phenotype.no2MaxMgL)
-    stress += STRESS.nitrite * (no2 / phenotype.no2MaxMgL - 1);
-  const o2 = (context.pools.get(POOL.o2) ?? 0) / volume;
+    stress += mortality.stress.nitrite * (no2 / phenotype.no2MaxMgL - 1);
+  const o2 = (context.pools.get('water_o2') ?? 0) / volume;
   if (
     phenotype.o2MinMgL !== undefined &&
     o2 < phenotype.o2MinMgL &&
     !archetype.flags.includes('air_breather')
   )
-    stress += STRESS.hypoxia * (1 - o2 / phenotype.o2MinMgL);
+    stress += mortality.stress.hypoxia * (1 - o2 / phenotype.o2MinMgL);
   return stress * w;
 }
 
@@ -82,34 +55,36 @@ function habitatStress(
   w: number,
   adult: boolean,
 ): number {
+  const mortality = context.params.mechanics.mortality;
   let stress = 0;
-  if (archetype.zone === 'W' && !context.media.hasWater) stress += STRESS.noWater;
-  if (w >= 1 && archetype.zone !== 'W' && !context.media.hasWater) stress += STRESS.noWater;
+  if (archetype.zone === 'W' && !context.media.hasWater) stress += mortality.stress.noWater;
+  if (w >= 1 && archetype.zone !== 'W' && !context.media.hasWater)
+    stress += mortality.stress.noWater;
   const needsLand = archetype.zone === 'T' || archetype.flags.includes('needs_land');
-  if (adult && needsLand && !context.media.hasLand) stress += STRESS.noLand;
+  if (adult && needsLand && !context.media.hasLand) stress += mortality.stress.noLand;
   const humidityMin = humidityMinOf(archetype, phenotype);
   if (w < 1 && context.media.hasLand && humidityMin !== undefined) {
     const humidity = context.state.land.humidity;
     if (humidity < humidityMin)
       stress +=
-        STRESS.desiccation *
+        mortality.stress.desiccation *
         effect(specialisedOf(archetype, phenotype).desiccation) *
         (1 - humidity / humidityMin) *
         (1 - w);
   }
   if (
     archetype.flags.includes('needs_uvb') &&
-    context.state.tracking.uvbOffDays >= UVB_DEFICIT_DAYS
+    context.state.tracking.uvbOffDays >= mortality.uvbDeficitDays
   )
-    stress += STRESS.noUvb;
+    stress += mortality.stress.noUvb;
   return stress;
 }
 
 /** Where dead organic matter of an organism with water-time fraction w settles. */
 function deathSink(context: BioContext, w: number) {
-  if (!context.media.hasLand) return WATER_DETRITUS;
-  if (!context.media.hasWater) return LAND_LITTER;
-  return w >= 0.5 ? WATER_DETRITUS : LAND_LITTER;
+  if (!context.media.hasLand) return DETRITUS;
+  if (!context.media.hasWater) return LITTER;
+  return w >= 0.5 ? DETRITUS : LITTER;
 }
 
 /** Fraction dying within a substep from a per-tick rate. */
@@ -128,14 +103,16 @@ function biomassDailyLoss(
     starvation === undefined
       ? 0
       : starvation.value * (1 - (context.satiation.get(population.id) ?? 0));
-  return hunger + senescenceLoss(population, archetype, phenotype);
+  return hunger + senescenceLoss(context.params, population, archetype, phenotype);
 }
 
 function senescenceLoss(
+  params: ParameterSet,
   population: BiomassPopulation,
   archetype: Archetype,
   phenotype: Phenotype,
 ): number {
+  const mortality = params.mechanics.mortality;
   if (archetype.kind !== 'biomass') return 0;
   const lifeHistory = archetype.lifeHistory;
   switch (lifeHistory.senescence) {
@@ -148,7 +125,7 @@ function senescenceLoss(
       const collapse =
         lifeHistory.clonalMaxGenerations !== undefined &&
         population.clonalGenerations >= lifeHistory.clonalMaxGenerations.max.value
-          ? CLONAL_COLLAPSE_HAZARD
+          ? mortality.clonalCollapseHazard
           : 0;
       return (archetype.kinetics.lossRate?.value ?? 0) + collapse;
     }
@@ -158,9 +135,11 @@ function senescenceLoss(
 }
 
 function biomassDeath(context: BioContext, population: BiomassPopulation): Process | null {
+  const mortality = context.params.mechanics.mortality;
   if (population.cod <= 0) return null;
-  const archetype = getArchetype(population.archetypeId);
-  const phenotype = phenotypeOf(population.speciesId);
+  const { params } = context;
+  const archetype = params.archetypes[population.archetypeId];
+  const phenotype = phenotypeOf(params, population.speciesId);
   const w = archetype.zone === 'T' ? 0 : 1;
   const temperature = w > 0 ? context.state.water.temperatureC : context.state.land.airTemperatureC;
   let stress =
@@ -168,6 +147,7 @@ function biomassDeath(context: BioContext, population: BiomassPopulation): Proce
     habitatStress(context, archetype, phenotype, w, true);
   if (
     environmentFactor(
+      params,
       context.state,
       phenotype,
       temperature,
@@ -175,29 +155,30 @@ function biomassDeath(context: BioContext, population: BiomassPopulation): Proce
       humidityMinOf(archetype, phenotype),
     ) <= 0
   )
-    stress += STRESS.outOfTolerance;
+    stress += mortality.stress.outOfTolerance;
   const perTick =
     biomassDailyLoss(context, population, archetype, phenotype) / TICKS_PER_DAY + stress;
   const rate = population.cod * fractionFor(perTick, context.dtDays);
   if (!(rate > 0)) return null;
-  const ratios = bodyRatios(archetype);
-  const terms: Record<string, number> = {};
+  const ratios = bodyRatios(params, archetype);
+  const inertFraction = params.stoichiometry.base.inertFractionOfDecay.value;
+  const terms: Stoichiometry = {};
   addTerm(terms, populationKey(population.id), -1);
   if (SOIL_MICROBES.has(archetype.id)) {
-    addTerm(terms, POOL.soilSubstrate, 1);
-    addTerm(terms, POOL.soilTan, ratios.n);
-    addTerm(terms, POOL.soilPo4, ratios.p);
+    addTerm(terms, 'soil_substrate', 1);
+    addTerm(terms, 'soil_tan', ratios.n);
+    addTerm(terms, 'soil_po4', ratios.p);
   } else if (w > 0 && context.media.hasWater) {
-    const inertN = Math.min(ratios.n, N_INERT) * INERT_FRACTION;
-    addTerm(terms, WATER_DETRITUS.cod, 1 - INERT_FRACTION);
-    addTerm(terms, WATER_DETRITUS.n, ratios.n - inertN);
-    addTerm(terms, WATER_DETRITUS.p, ratios.p);
-    addTerm(terms, WATER_INERT.cod, INERT_FRACTION);
-    addTerm(terms, WATER_INERT.n, inertN);
+    const inertN = Math.min(ratios.n, params.stoichiometry.base.nPerInertCod.value) * inertFraction;
+    addTerm(terms, DETRITUS.cod, 1 - inertFraction);
+    addTerm(terms, DETRITUS.n, ratios.n - inertN);
+    addTerm(terms, DETRITUS.p, ratios.p);
+    addTerm(terms, INERT.cod, inertFraction);
+    addTerm(terms, INERT.n, inertN);
   } else {
-    addTerm(terms, LAND_LITTER.cod, 1);
-    addTerm(terms, LAND_LITTER.n, ratios.n);
-    addTerm(terms, LAND_LITTER.p, ratios.p);
+    addTerm(terms, LITTER.cod, 1);
+    addTerm(terms, LITTER.n, ratios.n);
+    addTerm(terms, LITTER.p, ratios.p);
   }
   return {
     name: `death:${population.id}`,
@@ -209,53 +190,59 @@ function biomassDeath(context: BioContext, population: BiomassPopulation): Proce
 
 /** docs/04 §5.7 age hazard, d⁻¹; Infinity at or beyond the maximum lifespan. */
 function ageHazard(
+  params: ParameterSet,
   archetype: Archetype,
   phenotype: Phenotype,
   population: CohortPopulation,
   cohort: AgeCohort,
   tick: number,
 ): number {
+  const mortality = params.mechanics.mortality;
   const age = ageDays(cohort, tick);
   const lifespan = phenotype.lifespan;
   const senescence = archetype.lifeHistory.senescence;
   if (senescence === 'negligible')
-    return age >= lifespan.capDays ? Infinity : NEGLIGIBLE_SENESCENCE_HAZARD.value;
+    return age >= lifespan.capDays ? Infinity : params.physiology.negligibleSenescenceHazard.value;
   if (age >= lifespan.maxDays) return Infinity;
   let hazard = gompertzHazard(lifespan.gompertz, age);
-  if (population.lowSymbiontDays >= BLEACHED_DAYS) hazard *= BLEACHED_MORTALITY_FACTOR;
+  if (population.lowSymbiontDays >= mortality.bleachedDays)
+    hazard *= mortality.bleachedMortalityFactor;
   if (cohort.spentTick !== null) {
-    const remaining = cohort.spentTick + SEMELPAROUS_DEATH_DAYS * TICKS_PER_DAY - tick;
+    const remaining = cohort.spentTick + mortality.semelparousDeathDays * TICKS_PER_DAY - tick;
     hazard += remaining <= 1 ? Infinity : TICKS_PER_DAY / remaining;
   }
   return hazard;
 }
 
 function cohortDeaths(context: BioContext, population: CohortPopulation): Process[] {
+  const mortality = context.params.mechanics.mortality;
+  const { params } = context;
   const processes: Process[] = [];
-  const archetype = getArchetype(population.archetypeId);
-  const phenotype = phenotypeOf(population.speciesId);
-  const ratios = bodyRatios(archetype);
+  const archetype = params.archetypes[population.archetypeId];
+  const phenotype = phenotypeOf(params, population.speciesId);
+  const ratios = bodyRatios(params, archetype);
   const tick = context.state.tick;
   const escapes = archetype.flags.includes('escapes_open_lid') && !context.state.config.lid;
   population.cohorts.forEach((cohort, index) => {
-    const cod = cohortCod(cohort);
+    const cod = cohortCod(params, cohort);
     if (cod <= 0) return;
     const key = cohortKey(population.id, index);
-    const w = waterFraction(archetype, phenotype, context.media, cohort.aquatic);
+    const w = waterFraction(params, archetype, phenotype, context.media, cohort.aquatic);
     const adult = ageDays(cohort, tick) >= phenotype.maturityDays && !cohort.aquatic;
     const temperature = bodyTemperature(context.state, archetype, w, context.lightsOn);
     let stress =
       waterStress(context, archetype, phenotype, w) +
       habitatStress(context, archetype, phenotype, w, adult);
-    if (environmentFactor(context.state, phenotype, temperature, w) <= 0)
-      stress += STRESS.outOfTolerance;
-    if (cohort.meanMassMg < STARVATION_MASS_SHARE * cohort.peakMassMg) stress += STRESS.starvation;
-    const hazard = ageHazard(archetype, phenotype, population, cohort, tick);
+    if (environmentFactor(params, context.state, phenotype, temperature, w) <= 0)
+      stress += mortality.stress.outOfTolerance;
+    if (cohort.meanMassMg < mortality.starvationMassShare * cohort.peakMassMg)
+      stress += mortality.stress.starvation;
+    const hazard = ageHazard(params, archetype, phenotype, population, cohort, tick);
     const fraction =
       hazard === Infinity ? 1 : fractionFor(hazard / TICKS_PER_DAY + stress, context.dtDays);
     const sink = deathSink(context, w);
     if (fraction > 0) {
-      const terms: Record<string, number> = {};
+      const terms: Stoichiometry = {};
       addTerm(terms, key, -1);
       addTerm(terms, sink.cod, 1);
       addTerm(terms, sink.n, ratios.n);
@@ -269,13 +256,13 @@ function cohortDeaths(context: BioContext, population: CohortPopulation): Proces
       });
     }
     if (escapes && adult && fraction < 1) {
-      const terms: Record<string, number> = {};
+      const terms: Stoichiometry = {};
       addTerm(terms, key, -1);
-      addTerm(terms, POOL.exportN, ratios.n);
-      addTerm(terms, POOL.exportP, ratios.p);
+      addTerm(terms, 'out_n', ratios.n);
+      addTerm(terms, 'out_p', ratios.p);
       processes.push({
         name: `escape:${key}`,
-        rate: cod * (1 - fraction) * fractionFor(STRESS.escape, context.dtDays),
+        rate: cod * (1 - fraction) * fractionFor(mortality.stress.escape, context.dtDays),
         stoichiometry: terms,
         speciesId: population.speciesId,
         cohorts: [{ key, effect: 'remove' }],
@@ -283,7 +270,7 @@ function cohortDeaths(context: BioContext, population: CohortPopulation): Proces
     }
     const moduleDays = archetype.lifeHistory.moduleLifespanDays?.value;
     if (archetype.lifeHistory.senescence === 'modular' && moduleDays !== undefined) {
-      const terms: Record<string, number> = {};
+      const terms: Stoichiometry = {};
       addTerm(terms, key, -1);
       addTerm(terms, sink.cod, 1);
       addTerm(terms, sink.n, ratios.n);

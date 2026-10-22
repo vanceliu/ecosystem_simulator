@@ -1,4 +1,5 @@
 import type { Archetype, Defense, DietProfile, Flag, Habitat } from '../content/archetype';
+import type { ParameterSet } from '../content/parameters';
 import { decodeGenotype, type GenotypeCode } from './genotype';
 import { fitGompertz, type GompertzParams } from './gompertz';
 import { signedUnit } from './hash';
@@ -59,58 +60,7 @@ export interface Phenotype {
   readonly patternIndex?: number;
 }
 
-/** docs/05 §2.1 */
-const THERMAL_OPT_C = [14, 20, 22, 26, 29];
-const EURYTHERMAL_ALLELE = 2;
-const EURYTHERMAL_WIDTH = 1.6;
-/** a species spans this share of its archetype's temperature range */
-const SPECIES_THERMAL_SHARE = 0.6;
-const SALINITY_WIDTH = [0.4, 0.75, 0.75, 0.4];
-const HUMIDITY_OFFSET = [-20, -10, 0, 10];
-const PH_OPT = [6.5, 7.2, 8.0];
-const HARDINESS_TOXIN = [0.6, 1, 1.5];
-const HARDINESS_OXYGEN = [1.3, 1, 0.8];
-const HARDINESS_GROWTH = [1.1, 1, 0.9];
-const GROWTH_RATE = [1.25, 1, 0.8];
-const GROWTH_ASSIMILATION = [0.9, 1, 1.1];
-const FECUNDITY_CLUTCH = [2, 1, 0.5, 0.25];
-const FECUNDITY_EGG = [0.5, 1, 2, 4];
-const FECUNDITY_SURVIVAL = [0.5, 1, 1.5, 2.5];
-const METABOLISM_HALF_SAT = [0.5, 1, 1.5, 1];
-const METABOLISM_RATE = [0.8, 1, 1.2, 1];
-const SPECIALISED_METABOLISM = 3;
 const ACTIVITIES: readonly Activity[] = ['diurnal', 'nocturnal', 'constant'];
-const MIMICRY_PATTERN = 7;
-const MIMICRY_EXPOSURE = 0.85;
-/** docs/05 §2.6 */
-const EGG_MASS_FRACTION = 0.01;
-const MAX_REPRODUCTIVE_FRACTION = 0.3;
-const SHELL_GROWTH = 0.85;
-const TOXIN_METABOLISM = 1.1;
-/** docs/05 §2.5 */
-const JITTER = 0.05;
-
-/** docs/05 §2.7 */
-const MUTATION_EFFECT = {
-  albinoExposure: 1.2,
-  albinoPhotosynthesis: 0.7,
-  melanisticExposure: 0.9,
-  melanisticThermalShift: 1,
-  gigantismMass: 2.5,
-  gigantismLifespan: 1.2,
-  gigantismClutch: 0.7,
-  dwarfismMass: 0.4,
-  dwarfismLifespan: 0.8,
-  dwarfismMaturity: 0.7,
-  glowAttack: 1.15,
-  glowExposure: 1.3,
-  longevityLifespan: 1.5,
-  longevityGrowth: 0.85,
-  fecundityClutch: 1.8,
-  fecunditySurvival: 0.7,
-  eurythermalWidth: 1.8,
-  euryhalineExpansion: 0.5,
-} as const;
 
 const geometricMean = (a: number, b: number): number => Math.sqrt(a * b);
 const clamp = (value: number, min: number, max: number): number =>
@@ -121,25 +71,38 @@ const at = <T>(values: readonly T[], index: number): T => {
   return value;
 };
 
-function alleleMap(archetype: Archetype, alleles: readonly number[]): Map<LocusId, number> {
-  return new Map(lociFor(archetype).map((locus, position) => [locus.id, alleles[position] ?? 0]));
+function alleleMap(
+  params: ParameterSet,
+  archetype: Archetype,
+  alleles: readonly number[],
+): Map<LocusId, number> {
+  return new Map(
+    lociFor(params, archetype).map((locus, position) => [locus.id, alleles[position] ?? 0]),
+  );
 }
 
 /** Derives every simulation trait from archetype + genotype; deterministic (docs/05 §2). */
-export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Phenotype {
-  const { alleles } = decodeGenotype(archetype, code);
-  const allele = alleleMap(archetype, alleles);
+export function derivePhenotype(
+  params: ParameterSet,
+  archetype: Archetype,
+  code: GenotypeCode,
+): Phenotype {
+  const table = params.generation.phenotype;
+  const effect = table.mutationEffect;
+  const { alleles } = decodeGenotype(params, archetype, code);
+  const allele = alleleMap(params, archetype, alleles);
   const get = (id: LocusId): number => allele.get(id) ?? 0;
-  const jitter = (trait: string): number => 1 + JITTER * signedUnit(`${code}|${trait}`);
+  const jitter = (trait: string): number => 1 + table.jitter * signedUnit(`${code}|${trait}`);
+  const sizeAlleles = params.generation.loci.size.labelsZh?.length ?? 1;
   const mutation = at(MUTATIONS, get('mutation'));
 
   const massMin = archetype.massMg.min.value;
   const massMax = archetype.massMg.max.value;
   const logMin = Math.log10(massMin);
   const logSpan = Math.log10(massMax) - logMin;
-  let adultMassMg = 10 ** (logMin + ((get('size') + 0.5) / 7) * logSpan) * jitter('mass');
-  if (mutation === 'gigantism') adultMassMg *= MUTATION_EFFECT.gigantismMass;
-  if (mutation === 'dwarfism') adultMassMg *= MUTATION_EFFECT.dwarfismMass;
+  let adultMassMg = 10 ** (logMin + ((get('size') + 0.5) / sizeAlleles) * logSpan) * jitter('mass');
+  if (mutation === 'gigantism') adultMassMg *= effect.gigantismMass;
+  if (mutation === 'dwarfism') adultMassMg *= effect.dwarfismMass;
   const lengthMm =
     archetype.typicalLengthMm.value * Math.cbrt(adultMassMg / geometricMean(massMin, massMax));
 
@@ -147,16 +110,16 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
   const tMin = tolerance.temperatureC.min.value;
   const tMax = tolerance.temperatureC.max.value;
   let thermalOpt = clamp(
-    at(THERMAL_OPT_C, get('thermal')),
-    tMin + (tMax - tMin) * 0.1,
-    tMax - (tMax - tMin) * 0.1,
+    at(table.thermalOptC, get('thermal')),
+    tMin + (tMax - tMin) * table.thermalEdgeShare,
+    tMax - (tMax - tMin) * table.thermalEdgeShare,
   );
-  if (mutation === 'melanistic') thermalOpt += MUTATION_EFFECT.melanisticThermalShift;
+  if (mutation === 'melanistic') thermalOpt += effect.melanisticThermalShift;
   let thermalWidth =
     ((tMax - tMin) / 2) *
-    SPECIES_THERMAL_SHARE *
-    (get('thermal') === EURYTHERMAL_ALLELE ? EURYTHERMAL_WIDTH : 1);
-  if (mutation === 'eurythermal') thermalWidth *= MUTATION_EFFECT.eurythermalWidth;
+    table.speciesThermalShare *
+    (get('thermal') === table.eurythermalAllele ? table.eurythermalWidth : 1);
+  if (mutation === 'eurythermal') thermalWidth *= effect.eurythermalWidth;
   const temperatureC: ToleranceRange = {
     min: Math.max(tMin, thermalOpt - thermalWidth),
     opt: thermalOpt,
@@ -167,34 +130,38 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
   if (tolerance.salinityPpt !== undefined && archetype.zone !== 'T') {
     const sMin = tolerance.salinityPpt.min.value;
     const sMax = tolerance.salinityPpt.max.value;
-    const width = (sMax - sMin) * at(SALINITY_WIDTH, get('salinity'));
+    const width = (sMax - sMin) * at(table.salinityWidth, get('salinity'));
     const lowEnd = get('salinity') < 2;
     let min = lowEnd ? sMin : sMax - width;
     let max = lowEnd ? sMin + width : sMax;
     if (mutation === 'euryhaline') {
-      const expansion = (max - min) * MUTATION_EFFECT.euryhalineExpansion;
+      const expansion = (max - min) * effect.euryhalineExpansion;
       min = Math.max(0, min - expansion);
-      max = Math.min(35, max + expansion);
+      max = Math.min(table.salinityCeilingPpt, max + expansion);
     }
     salinityPpt = { min, opt: (min + max) / 2, max };
   }
 
   let humidityMinPercent: number | undefined;
   if (tolerance.humidityMinPercent !== undefined) {
-    const offset = archetype.zone === 'T' ? at(HUMIDITY_OFFSET, get('humidity')) : 0;
-    humidityMinPercent = clamp(tolerance.humidityMinPercent.value + offset, 10, 95);
+    const offset = archetype.zone === 'T' ? at(table.humidityOffset, get('humidity')) : 0;
+    humidityMinPercent = clamp(
+      tolerance.humidityMinPercent.value + offset,
+      table.humidityMinPercent.min,
+      table.humidityMinPercent.max,
+    );
   }
 
   const phMin = tolerance.ph.min.value;
   const phMax = tolerance.ph.max.value;
   const ph: ToleranceRange = {
     min: phMin,
-    opt: clamp(at(PH_OPT, get('ph')), phMin + 0.2, phMax - 0.2),
+    opt: clamp(at(table.phOpt, get('ph')), phMin + table.phOptMargin, phMax - table.phOptMargin),
     max: phMax,
   };
 
   const hardiness = get('hardiness');
-  const toxinFactor = at(HARDINESS_TOXIN, hardiness);
+  const toxinFactor = at(table.hardinessToxin, hardiness);
   const nh3MaxMgL =
     tolerance.nh3MaxMgL === undefined
       ? undefined
@@ -206,11 +173,11 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
   const o2MinMgL =
     tolerance.o2MinMgL === undefined
       ? undefined
-      : tolerance.o2MinMgL.value * at(HARDINESS_OXYGEN, hardiness) * jitter('o2');
+      : tolerance.o2MinMgL.value * at(table.hardinessOxygen, hardiness) * jitter('o2');
 
   let growthMultiplier =
-    at(GROWTH_RATE, get('growth')) * at(HARDINESS_GROWTH, hardiness) * jitter('growth');
-  const assimilationMultiplier = at(GROWTH_ASSIMILATION, get('growth'));
+    at(table.growthRate, get('growth')) * at(table.hardinessGrowth, hardiness) * jitter('growth');
+  const assimilationMultiplier = at(table.growthAssimilation, get('growth'));
   let metabolicMultiplier = 1;
 
   const span = archetype.lifeHistory.lifespanDays;
@@ -225,21 +192,24 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
         : (span.typHigh.value + span.max.value) / 2;
   typicalDays *= jitter('lifespan');
   let lifespanFactor = 1;
-  if (mutation === 'gigantism') lifespanFactor *= MUTATION_EFFECT.gigantismLifespan;
-  if (mutation === 'dwarfism') lifespanFactor *= MUTATION_EFFECT.dwarfismLifespan;
+  if (mutation === 'gigantism') lifespanFactor *= effect.gigantismLifespan;
+  if (mutation === 'dwarfism') lifespanFactor *= effect.dwarfismLifespan;
   if (mutation === 'longevity') {
-    lifespanFactor *= MUTATION_EFFECT.longevityLifespan;
-    growthMultiplier *= MUTATION_EFFECT.longevityGrowth;
+    lifespanFactor *= effect.longevityLifespan;
+    growthMultiplier *= effect.longevityGrowth;
   }
-  typicalDays = Math.min(capDays * 0.9, typicalDays * lifespanFactor);
+  typicalDays = Math.min(capDays * table.typicalCapShare, typicalDays * lifespanFactor);
   const maxDays = Math.min(
     capDays,
-    Math.max(typicalDays * 1.05, (typicalDays * span.max.value) / Math.max(typicalMid, 1e-9)),
+    Math.max(
+      typicalDays * table.maxOverTypicalMin,
+      (typicalDays * span.max.value) / Math.max(typicalMid, 1e-9),
+    ),
   );
 
   const maturity = archetype.lifeHistory.maturityDays;
   let maturityDays = geometricMean(maturity.min.value, maturity.max.value) * jitter('maturity');
-  if (mutation === 'dwarfism') maturityDays *= MUTATION_EFFECT.dwarfismMaturity;
+  if (mutation === 'dwarfism') maturityDays *= effect.dwarfismMaturity;
 
   const flags = new Set<Flag>(archetype.flags);
   if (mutation === 'resistant') flags.add('medication_resistant');
@@ -247,31 +217,30 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
   let predationExposure = 1;
   let nightExposure = 1;
   let nightAttack = 1;
-  if (mutation === 'albino') predationExposure *= MUTATION_EFFECT.albinoExposure;
-  if (mutation === 'melanistic') predationExposure *= MUTATION_EFFECT.melanisticExposure;
+  if (mutation === 'albino') predationExposure *= effect.albinoExposure;
+  if (mutation === 'melanistic') predationExposure *= effect.melanisticExposure;
   if (mutation === 'bioluminescent') {
-    nightExposure = MUTATION_EFFECT.glowExposure;
-    nightAttack = MUTATION_EFFECT.glowAttack;
+    nightExposure = effect.glowExposure;
+    nightAttack = effect.glowAttack;
   }
 
   let light: Phenotype['light'];
   if (archetype.kind === 'biomass' && archetype.light !== undefined) {
     const pigment = get('pigment');
-    const lowLightAdapted = pigment === 1 || pigment === 2;
-    const highLightAdapted = pigment === 4 || pigment === 5;
     light = {
-      halfSaturation: archetype.light.halfSaturation.value * (lowLightAdapted ? 0.7 : 1),
-      optimum: archetype.light.optimum.value * (lowLightAdapted ? 0.8 : highLightAdapted ? 1.2 : 1),
+      halfSaturation:
+        archetype.light.halfSaturation.value * at(table.pigmentLightHalfSaturation, pigment),
+      optimum: archetype.light.optimum.value * at(table.pigmentLightOptimum, pigment),
     };
-    if (mutation === 'albino') growthMultiplier *= MUTATION_EFFECT.albinoPhotosynthesis;
+    if (mutation === 'albino') growthMultiplier *= effect.albinoPhotosynthesis;
   }
 
   if (archetype.kind === 'cohort') {
     const defenses = at(archetype.defenses, get('defense'));
-    if (defenses.includes('shell')) growthMultiplier *= SHELL_GROWTH;
+    if (defenses.includes('shell')) growthMultiplier *= table.shellGrowth;
     if (defenses.includes('toxin') || defenses.includes('venom'))
-      metabolicMultiplier *= TOXIN_METABOLISM;
-    if (get('pattern') === MIMICRY_PATTERN) predationExposure *= MIMICRY_EXPOSURE;
+      metabolicMultiplier *= table.toxinMetabolism;
+    if (get('pattern') === table.mimicryPattern) predationExposure *= table.mimicryExposure;
     const fecundity = get('fecundity');
     const clutchRange = archetype.lifeHistory.reproduction.clutch;
     const baseClutch =
@@ -281,15 +250,18 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
             clutchRange.min.value,
             Math.max(clutchRange.min.value, clutchRange.max.value),
           );
-    let clutch = Math.max(1, baseClutch * at(FECUNDITY_CLUTCH, fecundity) * jitter('clutch'));
-    let juvenileSurvivalMultiplier = at(FECUNDITY_SURVIVAL, fecundity);
-    if (mutation === 'gigantism') clutch *= MUTATION_EFFECT.gigantismClutch;
+    let clutch = Math.max(1, baseClutch * at(table.fecundityClutch, fecundity) * jitter('clutch'));
+    let juvenileSurvivalMultiplier = at(table.fecunditySurvival, fecundity);
+    if (mutation === 'gigantism') clutch *= effect.gigantismClutch;
     if (mutation === 'fecundity') {
-      clutch *= MUTATION_EFFECT.fecundityClutch;
-      juvenileSurvivalMultiplier *= MUTATION_EFFECT.fecunditySurvival;
+      clutch *= effect.fecundityClutch;
+      juvenileSurvivalMultiplier *= effect.fecunditySurvival;
     }
-    const eggMassMg = adultMassMg * EGG_MASS_FRACTION * at(FECUNDITY_EGG, fecundity);
-    clutch = Math.max(1, Math.min(clutch, (MAX_REPRODUCTIVE_FRACTION * adultMassMg) / eggMassMg));
+    const eggMassMg = adultMassMg * table.eggMassFraction * at(table.fecundityEgg, fecundity);
+    clutch = Math.max(
+      1,
+      Math.min(clutch, (table.maxReproductiveFraction * adultMassMg) / eggMassMg),
+    );
     return {
       code,
       mutation,
@@ -305,7 +277,12 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
       growthMultiplier,
       assimilationMultiplier,
       metabolicMultiplier,
-      lifespan: { typicalDays, maxDays, capDays, gompertz: fitGompertz(typicalDays, maxDays) },
+      lifespan: {
+        typicalDays,
+        maxDays,
+        capDays,
+        gompertz: fitGompertz(params, typicalDays, maxDays),
+      },
       maturityDays,
       clutch,
       eggMassMg,
@@ -338,10 +315,15 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
     ...(nh3MaxMgL === undefined ? {} : { nh3MaxMgL }),
     ...(no2MaxMgL === undefined ? {} : { no2MaxMgL }),
     ...(o2MinMgL === undefined ? {} : { o2MinMgL }),
-    growthMultiplier: growthMultiplier * at(METABOLISM_RATE, metabolism),
+    growthMultiplier: growthMultiplier * at(table.metabolismRate, metabolism),
     assimilationMultiplier,
     metabolicMultiplier,
-    lifespan: { typicalDays, maxDays, capDays, gompertz: fitGompertz(typicalDays, maxDays) },
+    lifespan: {
+      typicalDays,
+      maxDays,
+      capDays,
+      gompertz: fitGompertz(params, typicalDays, maxDays),
+    },
     maturityDays,
     juvenileSurvivalMultiplier: 1,
     defenses: [],
@@ -351,8 +333,8 @@ export function derivePhenotype(archetype: Archetype, code: GenotypeCode): Pheno
     nightExposure,
     nightAttack,
     morphology: at(archetype.morphologies, get('morphology')),
-    halfSaturationMultiplier: at(METABOLISM_HALF_SAT, metabolism),
-    specialisedMetabolism: metabolism === SPECIALISED_METABOLISM,
+    halfSaturationMultiplier: at(table.metabolismHalfSat, metabolism),
+    specialisedMetabolism: metabolism === table.specialisedMetabolism,
     ...(light === undefined ? {} : { light }),
     flags: [...flags],
     pigmentIndex: get('pigment'),

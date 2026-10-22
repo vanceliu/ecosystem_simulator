@@ -8,7 +8,7 @@
 |---|---|
 | [docs/00-plan.md](docs/00-plan.md) | 每次開始工作前；決定下一個任務 |
 | [docs/01-overview.md](docs/01-overview.md) | 範圍與名詞 |
-| [docs/02-ecosystem-catalog.md](docs/02-ecosystem-catalog.md) | 新增或修改功能群、`src/content` |
+| [docs/02-ecosystem-catalog.md](docs/02-ecosystem-catalog.md) | 新增或修改功能群、`db/reference/archetypes` |
 | [docs/03-architecture.md](docs/03-architecture.md) | 新增模組、跨層呼叫、存檔、worker、測試 |
 | [docs/04-simulation-model.md](docs/04-simulation-model.md) | 修改 `src/engine` |
 | [docs/05-species-generation.md](docs/05-species-generation.md) | 修改 `src/generation` |
@@ -45,18 +45,20 @@
 - `src/engine`、`src/generation`：純函式；禁止 `Math.random`、`Date`、DOM、I/O、計時器。
 - 亂數一律來自傳入的 `Rng`；每 tick 亂數 = `sfc32(hash(worldSeed, tick))`。
 - `SimulationState` 必須可直接 JSON 序列化：無類別實例、函式、Map、Set。
-- 數值常數以具名常數集中於模組頂部，數值與 04 文件一致；調校後同步更新文件。
+- 所有參數（生物、物理、遊戲機制、基因座表、命名詞彙）存於 `db/reference/*.sql`，以 id 識別；程式由傳入的 `ParameterSet` 取值，只保留單位換算、id 列舉、編碼結構與演算法設定。
 - 所有池與生物量下限為 0。
 - 族群只能由模擬過程或玩家指令改變；禁止以人為規則移除、削減族群（[04](docs/04-simulation-model.md) §9.1）。
-- 資料庫只在 worker 內存取；引擎層不 import `persistence`。
+- 資料庫只在 worker（及 Node 工具）內存取；`content`、`generation`、`engine`、`game` 不 import `persistence`。
+- 物質池以物質 id（`ref_substance`）為鍵存於 `SimulationState.substances`；新增物質須同步 `src/content/substances.ts` 與 `db/reference/substances.sql`。
 - 資料表變更 → 新增 `src/persistence/migrations/NNNN_描述.sql`，不修改已發布的遷移檔。
 - `SimulationState` 結構變更 → 遞增 `state_schema` 並新增 `stateMigrations.ts` 轉換函式。
-- `db/reference.sql` 為產生檔，修改 `src/content` 後重新產生並遞增參考資料版本。
-- 物種 = 功能群 + 基因型；表現型與學名由物種 ID 決定性推導。變更基因座或推導規則會改變既有物種，必須遞增參考資料版本並新增遷移。
+- 參考資料直接編輯 `db/reference/*.sql`；版本為種子內容雜湊，自動重新匯入。
+- 物種 = 功能群 + 基因型；表現型與學名由物種 ID 決定性推導。變更基因座、`generation.*`、`naming.*` 或推導規則會改變既有物種，必須新增遷移。
 - 所有生物皆有年齡上限；新增功能群必須在 09 定義衰老型態與遊戲上限。
-- 生物參數：`src/content` 每個生物數值附 `basis`（measured／derived／estimated）；measured、derived 必附 `source`；derived 必附推算方式；estimated 對應 09 的「（估）」，持續補齊來源。
+- 生物與物理參數：每個數值附 `basis`（measured／derived／estimated）；measured、derived 必附 `source_id`；derived 必附 `derivation`；estimated 必附 `note`，對應 09 的「（估）」，持續補齊來源。
 - 每個功能群必有年齡上限；查無資料時填暫定值並標（估）。
-- 遊戲機制參數（上限、門檻、係數）不屬生物參數，集中於具名常數並於 04 文件定義。
+- 遊戲機制參數（上限、門檻、係數）不屬生物參數，存於 `mechanics.*`（不附 `basis`），並於 04 文件定義。
+- 參數或公式變更後執行回歸測試（`tests/engine/regression.test.ts`）；預期內的變化才更新 `tests/fixtures/regression-*.json`。
 
 ## 程式規範
 

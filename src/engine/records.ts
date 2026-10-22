@@ -1,6 +1,6 @@
+import type { ParameterSet } from '../content/parameters';
 import { populationCod, populationCount, TICKS_PER_DAY } from './biota';
 import type { Process } from './fluxes';
-import { POOL } from './pools';
 import type { Population, Records, SimulationState } from './types';
 
 /** docs/04 §10 ring lengths, game days */
@@ -23,15 +23,15 @@ export type ChemFluxKind =
   | 'n2_released';
 
 const CHEM_KEYS: Readonly<Record<string, readonly [ChemFluxKind | null, ChemFluxKind | null]>> = {
-  [POOL.o2]: ['o2_produced', 'o2_consumed'],
-  [POOL.tan]: ['tan_excreted', 'tan_uptake'],
-  [POOL.soilTan]: ['tan_excreted', 'tan_uptake'],
-  [POOL.no2]: ['no2_produced', null],
-  [POOL.no3]: ['no3_produced', 'no3_uptake'],
-  [POOL.po4]: [null, 'po4_uptake'],
-  [POOL.soilPo4]: [null, 'po4_uptake'],
-  [POOL.co2]: ['co2_produced', 'co2_uptake'],
-  [POOL.n2Out]: ['n2_released', null],
+  water_o2: ['o2_produced', 'o2_consumed'],
+  water_tan: ['tan_excreted', 'tan_uptake'],
+  soil_tan: ['tan_excreted', 'tan_uptake'],
+  water_no2: ['no2_produced', null],
+  water_no3: ['no3_produced', 'no3_uptake'],
+  water_po4: [null, 'po4_uptake'],
+  soil_po4: [null, 'po4_uptake'],
+  water_co2: ['co2_produced', 'co2_uptake'],
+  out_n2: ['n2_released', null],
 };
 
 export function emptyRecords(): Records {
@@ -67,7 +67,7 @@ export function recordFluxes(
         addTo(records.feeding, `${edge.prey}>${edge.predator}`, bucket, amount * edge.share);
     }
     if (process.speciesId === undefined) return;
-    for (const [key, coefficient] of Object.entries(process.stoichiometry)) {
+    for (const [key, coefficient] of Object.entries(process.stoichiometry) as [string, number][]) {
       const kinds = CHEM_KEYS[key];
       if (kinds === undefined) continue;
       const kind = coefficient > 0 ? kinds[0] : kinds[1];
@@ -83,16 +83,18 @@ export function recordFluxes(
 }
 
 /** Size used for population history: individuals (cohort) or mg COD (biomass). */
-export function populationSize(population: Population): number {
-  return population.kind === 'cohort' ? populationCount(population) : populationCod(population);
+export function populationSize(params: ParameterSet, population: Population): number {
+  return population.kind === 'cohort'
+    ? populationCount(population)
+    : populationCod(params, population);
 }
 
 /** Adds this tick's population sizes to the running daily mean. */
-export function sampleHistory(state: SimulationState): void {
+export function sampleHistory(params: ParameterSet, state: SimulationState): void {
   const accumulator = state.records.historyAccumulator;
   for (const population of state.populations) {
     const entry = accumulator[population.speciesId] ?? (accumulator[population.speciesId] = [0, 0]);
-    entry[0] += populationSize(population);
+    entry[0] += populationSize(params, population);
     entry[1] += 1;
   }
 }

@@ -1,6 +1,6 @@
 import type { Archetype, FoodKind, SourcedRange } from '../../src/content/archetype';
 import { isSourced } from '../../src/content/sourced';
-import { SOURCES } from '../../src/content/sources';
+import type { Source } from '../../src/content/sources';
 
 const ANIMAL_PREY: readonly FoodKind[] = [
   'protozoa',
@@ -20,19 +20,27 @@ const ANIMAL_PREY: readonly FoodKind[] = [
 const LATIN_STEM = /^[A-Z][a-z]{2,10}$/;
 const DIET_SUM_TOLERANCE = 0.01;
 
-function sourcingProblems(value: unknown, path: string, problems: string[]): void {
+type Sources = Readonly<Record<string, Source>>;
+
+/** Provenance problems of every Sourced value below `value` (CLAUDE.md sourcing rule). */
+export function sourcingProblems(
+  sources: Sources,
+  value: unknown,
+  path: string,
+  problems: string[],
+): void {
   if (isSourced(value)) {
     const sourced = value;
     if (!Number.isFinite(sourced.value)) problems.push(`${path}: not finite`);
     if (sourced.basis === 'measured' || sourced.basis === 'derived') {
-      if (!(sourced.source in SOURCES)) problems.push(`${path}: unknown source ${sourced.source}`);
+      if (!(sourced.source in sources)) problems.push(`${path}: unknown source ${sourced.source}`);
     }
     if (sourced.basis === 'derived' && sourced.derivation.length === 0) {
       problems.push(`${path}: derived value without derivation`);
     }
     if (sourced.basis === 'estimated') {
       if (sourced.note.length === 0) problems.push(`${path}: estimate without note`);
-      if (sourced.source !== undefined && !(sourced.source in SOURCES)) {
+      if (sourced.source !== undefined && !(sourced.source in sources)) {
         problems.push(`${path}: unknown source ${sourced.source}`);
       }
     }
@@ -40,18 +48,18 @@ function sourcingProblems(value: unknown, path: string, problems: string[]): voi
   }
   if (typeof value !== 'object' || value === null) return;
   for (const [key, child] of Object.entries(value))
-    sourcingProblems(child, `${path}.${key}`, problems);
+    sourcingProblems(sources, child, `${path}.${key}`, problems);
 }
 
 const ordered = (range: SourcedRange): boolean => range.min.value <= range.max.value;
 
 /** Returns every rule violation for one archetype; empty when valid. */
-export function archetypeProblems(a: Archetype): string[] {
+export function archetypeProblems(sources: Sources, a: Archetype): string[] {
   const p: string[] = [];
   const check = (ok: boolean, message: string): void => {
     if (!ok) p.push(message);
   };
-  sourcingProblems(a, a.id, p);
+  sourcingProblems(sources, a, a.id, p);
 
   check(LATIN_STEM.test(a.latinStem), `latinStem "${a.latinStem}" must match ${LATIN_STEM}`);
   check(a.nounZh.length > 0, 'nounZh empty');

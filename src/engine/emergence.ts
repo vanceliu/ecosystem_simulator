@@ -1,9 +1,8 @@
 import type { Archetype, Vector } from '../content/archetype';
 import { ARCHETYPE_IDS, type ArchetypeId } from '../content/archetypeIds';
-import { getArchetype } from '../content/archetypes/index';
-import { REALM_OCEANS, type RealmCode } from '../content/location';
-import { BACKGROUND_SEEDING, type MicrobeId } from '../content/microbes';
-import { NATIVE_RANGES } from '../content/realms';
+import type { RealmCode } from '../content/location';
+import { MICROBE_IDS, type MicrobeId } from '../content/microbes';
+import type { ParameterSet } from '../content/parameters';
 import type { WaterSourceId } from '../content/waterSources';
 import {
   parseGenotypeCode,
@@ -15,7 +14,7 @@ import {
 import type { BioContext } from './bioContext';
 import {
   bodyTemperature,
-  COD_PER_DRY_MASS,
+  codPerDryMass,
   environmentFactor,
   phenotypeOf,
   TICKS_PER_DAY,
@@ -36,42 +35,6 @@ import { creditImport, foundBiomass, foundCohort, registerSpecies } from './foun
 import { seedingCod } from './microbes';
 import type { Rng } from './rng';
 import type { CohortPopulation, Command, SimEvent, SimulationState, TankConfig } from './types';
-
-/** docs/04 §7: chance per archetype and setup route before suitability */
-export const INITIAL_INOCULATION_PROBABILITY = 0.5;
-/** docs/04 §7: arrivals per archetype per game day before suitability */
-export const ARRIVAL_RATE_PER_DAY: Readonly<Partial<Record<Vector, number>>> = {
-  background: 0.05,
-  open_inflow: 0.2,
-  outside: 0.02,
-};
-/** docs/04 §7: new strains of background-seeded microbes per archetype per game day */
-export const MICROBE_STRAIN_ARRIVALS_PER_DAY = 0.05;
-/** docs/04 §7: a new microbial strain starts with this many days of background seeding */
-export const MICROBE_STRAIN_FOUNDING_DAYS = 20;
-/** docs/11 §7: outdoor tanks receive the `outside` route this many times as often */
-export const OUTDOOR_OUTSIDE_FACTOR = 5;
-/** docs/04 §7: chance an arrival reuses a genotype already seen in the tank */
-export const REUSE_PROBABILITY = 0.3;
-/** docs/04 §7: founding biomass as a share of carrying capacity */
-export const FOUNDING_BIOMASS_SHARE = 1e-4;
-/** docs/04 §7: founding individuals of a cohort-type arrival */
-export const FOUNDING_COUNT = { min: 2, max: 10 } as const;
-/** founders arrive half-grown */
-export const FOUNDING_AGE_SHARE = 0.5;
-export const FOUNDING_MASS_SHARE = 0.25;
-/** docs/06 §2: adults per release */
-export const RELEASE_COUNT = 5;
-/** biomass released by the player as a share of carrying capacity */
-export const RELEASE_BIOMASS_SHARE = 0.01;
-/** docs/04 §9.2 */
-export const SATURATION_LIMIT = 2000;
-export const SATURATION_RESUME = 1900;
-const MARINE_SALINITY_PPT = 30;
-/** docs/04 §7: strains sharing a starting microbial inoculum or a first day of seeding */
-export const INITIAL_MICROBE_STRAINS = 3;
-/** draws tried when a microbe species must suit the tank */
-const SUITABLE_DRAW_ATTEMPTS = 8;
 
 const WATER_VECTOR: Readonly<Record<WaterSourceId, Vector | null>> = {
   tap: 'tap_water',
@@ -139,14 +102,21 @@ export function setupRoutes(config: TankConfig): Route[] {
 }
 
 /** docs/11 §6: natural routes only bring archetypes native to the source realm. */
-export function isNative(archetype: Archetype, realm: RealmCode, salinityPpt: number): boolean {
-  const range = NATIVE_RANGES[archetype.id];
-  const marine = archetype.zone !== 'T' && salinityPpt >= MARINE_SALINITY_PPT;
-  if (marine) return range.oceans.some((ocean) => REALM_OCEANS[realm].includes(ocean));
+export function isNative(
+  params: ParameterSet,
+  archetype: Archetype,
+  realm: RealmCode,
+  salinityPpt: number,
+): boolean {
+  const range = params.nativeRanges[archetype.id];
+  const marine = archetype.zone !== 'T' && salinityPpt >= params.mechanics.water.marineSalinityPpt;
+  if (marine)
+    return range.oceans.some((ocean) => params.location.realmOceans[realm].includes(ocean));
   return range.realms.includes(realm);
 }
 
-const isBackgroundMicrobe = (id: ArchetypeId): id is MicrobeId => id in BACKGROUND_SEEDING;
+const isBackgroundMicrobe = (id: ArchetypeId): id is MicrobeId =>
+  (MICROBE_IDS as readonly ArchetypeId[]).includes(id);
 
 function samplingEnvironment(
   state: SimulationState,
@@ -172,12 +142,17 @@ function pickGenotype(
   context: BioContext,
   rng: Rng,
 ): GenotypeCode | null {
-  if (rng.next() < REUSE_PROBABILITY) {
+  if (rng.next() < context.params.mechanics.emergence.reuseProbability) {
     const known = Object.keys(state.species).filter((id) => id.startsWith(`${archetype.id}:`));
     const reused = known[Math.floor(rng.next() * known.length)];
     if (reused !== undefined) return reused;
   }
-  return sampleGenotype(archetype, rng, samplingEnvironment(state, archetype, context));
+  return sampleGenotype(
+    context.params,
+    archetype,
+    rng,
+    samplingEnvironment(state, archetype, context),
+  );
 }
 
 /** Draws until a genotype can live in the tank now; null when none of the attempts can. */
@@ -186,7 +161,8 @@ export function pickSuitableGenotype(
   archetype: Archetype,
   rng: Rng,
 ): GenotypeCode | null {
-  for (let attempt = 0; attempt < SUITABLE_DRAW_ATTEMPTS; attempt += 1) {
+  const attempts = context.params.mechanics.numerics.suitableDrawAttempts;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const speciesId = pickGenotype(context.state, archetype, context, rng);
     if (speciesId !== null && suitability(context, archetype, speciesId) > 0) return speciesId;
   }
@@ -194,8 +170,8 @@ export function pickSuitableGenotype(
 }
 
 /** A one-adult stand-in population used to score food supply before arrival. */
-function candidate(speciesId: GenotypeCode, tick: number): CohortPopulation {
-  const phenotype = phenotypeOf(speciesId);
+function candidate(params: ParameterSet, speciesId: GenotypeCode, tick: number): CohortPopulation {
+  const phenotype = phenotypeOf(params, speciesId);
   return {
     id: 'candidate',
     speciesId,
@@ -230,18 +206,21 @@ export function suitability(
   archetype: Archetype,
   speciesId: GenotypeCode,
 ): number {
-  const state = context.state;
-  const phenotype = phenotypeOf(speciesId);
+  const { params, state } = context;
+  const phenotype = phenotypeOf(params, speciesId);
   if (enclosureProblem(archetype, phenotype, state.config, context.space) !== null) return 0;
-  const w = waterFraction(archetype, phenotype, context.media, false);
+  const w = waterFraction(params, archetype, phenotype, context.media, false);
   const temperature = bodyTemperature(state, archetype, w, context.lightsOn);
-  const fEnv = environmentFactor(state, phenotype, temperature, w);
+  const fEnv = environmentFactor(params, state, phenotype, temperature, w);
   if (fEnv <= 0) return 0;
   if (w > 0 && context.media.hasWater) {
     const volume = context.space.waterVolumeL;
-    const o2 = state.water.o2 / volume;
+    const o2 = state.substances.water_o2 / volume;
     if (phenotype.nh3MaxMgL !== undefined && context.freeAmmoniaMgL > phenotype.nh3MaxMgL) return 0;
-    if (phenotype.no2MaxMgL !== undefined && state.water.no2 / volume > phenotype.no2MaxMgL)
+    if (
+      phenotype.no2MaxMgL !== undefined &&
+      state.substances.water_no2 / volume > phenotype.no2MaxMgL
+    )
       return 0;
     if (
       phenotype.o2MinMgL !== undefined &&
@@ -252,16 +231,16 @@ export function suitability(
   }
   let food = 1;
   if (archetype.kind === 'cohort') {
-    const predator = predatorOf(context, candidate(speciesId, state.tick));
+    const predator = predatorOf(context, candidate(params, speciesId, state.tick));
     food =
       predator === null
         ? 0
         : foodAvailability(context, predator, indexFood(foodNodes(context, state.populations)));
   } else if (archetype.trophicMode === 'consumer') {
     const predator = predatorOf(context, {
-      ...candidate(speciesId, state.tick),
+      ...candidate(params, speciesId, state.tick),
       kind: 'biomass',
-      cod: phenotype.adultMassMg * COD_PER_DRY_MASS,
+      cod: phenotype.adultMassMg * codPerDryMass(params),
       clonalGenerations: 0,
       collapsed: false,
     });
@@ -275,6 +254,7 @@ export function suitability(
 
 /** Founding biomass for an arriving biomass species, mg COD. */
 function foundingCod(
+  params: ParameterSet,
   archetype: Archetype,
   speciesId: GenotypeCode,
   space: Space,
@@ -283,13 +263,14 @@ function foundingCod(
   const microbial = MICROBIAL_CAPACITY_GROUP[archetype.id];
   const capacity =
     microbial === undefined
-      ? capacityCod(archetype, phenotypeOf(speciesId), space)
-      : microbialCapacity(microbial, space);
+      ? capacityCod(params, archetype, phenotypeOf(params, speciesId), space)
+      : microbialCapacity(params, microbial, space);
   return capacity * share;
 }
 
 /** Brings a species in from outside the tank; returns false when nothing could arrive. */
 export function admit(
+  params: ParameterSet,
   state: SimulationState,
   space: Space,
   archetype: Archetype,
@@ -298,7 +279,8 @@ export function admit(
   realm: RealmCode,
   rng: Rng,
 ): boolean {
-  const phenotype = phenotypeOf(speciesId);
+  const phenotype = phenotypeOf(params, speciesId);
+  const emergence = params.mechanics.emergence;
   registerSpecies(state, {
     id: speciesId,
     origin: ORIGIN[vector],
@@ -307,25 +289,29 @@ export function admit(
   if (archetype.kind === 'biomass') {
     const units = archetype.zone === 'T' ? space.geometry.landAreaM2 : space.waterVolumeL;
     const cod = isBackgroundMicrobe(archetype.id)
-      ? seedingCod(archetype.id, units, MICROBE_STRAIN_FOUNDING_DAYS)
-      : foundingCod(archetype, speciesId, space, FOUNDING_BIOMASS_SHARE);
+      ? seedingCod(params, archetype.id, units, emergence.microbeStrainFoundingDays)
+      : foundingCod(params, archetype, speciesId, space, emergence.foundingBiomassShare);
     if (!(cod > 0)) return false;
     foundBiomass(state, speciesId, vector, cod);
-    creditImport(state, speciesId, cod);
+    creditImport(params, state, speciesId, cod);
     return true;
   }
-  const count =
-    FOUNDING_COUNT.min + Math.floor(rng.next() * (FOUNDING_COUNT.max - FOUNDING_COUNT.min + 1));
-  const massMg = Math.max(phenotype.eggMassMg ?? 0, phenotype.adultMassMg * FOUNDING_MASS_SHARE);
-  foundCohort(state, speciesId, vector, {
-    birthTick: state.tick - Math.round(phenotype.maturityDays * FOUNDING_AGE_SHARE * TICKS_PER_DAY),
+  const founders = emergence.foundingCount;
+  const count = founders.min + Math.floor(rng.next() * (founders.max - founders.min + 1));
+  const massMg = Math.max(
+    phenotype.eggMassMg ?? 0,
+    phenotype.adultMassMg * emergence.foundingMassShare,
+  );
+  foundCohort(params, state, speciesId, vector, {
+    birthTick:
+      state.tick - Math.round(phenotype.maturityDays * emergence.foundingAgeShare * TICKS_PER_DAY),
     count,
     meanMassMg: massMg,
     peakMassMg: massMg,
     aquatic: archetype.flags.includes('metamorphosis_exit'),
     spentTick: null,
   });
-  creditImport(state, speciesId, count * massMg * COD_PER_DRY_MASS);
+  creditImport(params, state, speciesId, count * massMg * codPerDryMass(params));
   return true;
 }
 
@@ -339,12 +325,12 @@ function tryArrival(
 ): boolean {
   const roll = rng.next();
   if (roll >= probability) return false;
-  const state = context.state;
-  if (!isNative(archetype, realm, context.salinityPpt)) return false;
+  const { params, state } = context;
+  if (!isNative(params, archetype, realm, context.salinityPpt)) return false;
   const speciesId = pickGenotype(state, archetype, context, rng);
   if (speciesId === null) return false;
   if (roll >= probability * suitability(context, archetype, speciesId)) return false;
-  return admit(state, context.space, archetype, speciesId, vector, realm, rng);
+  return admit(params, state, context.space, archetype, speciesId, vector, realm, rng);
 }
 
 /** docs/04 §7 setup inoculation through every route opened by the tank setup. */
@@ -352,14 +338,14 @@ export function inoculate(context: BioContext, rng: Rng): void {
   for (const route of setupRoutes(context.state.config)) {
     for (const id of ARCHETYPE_IDS) {
       if (isBackgroundMicrobe(id)) continue;
-      const archetype = getArchetype(id);
+      const archetype = context.params.archetypes[id];
       if (!archetype.vectors.includes(route.vector)) continue;
       tryArrival(
         context,
         archetype,
         route.vector,
         route.realm,
-        INITIAL_INOCULATION_PROBABILITY,
+        context.params.mechanics.emergence.initialInoculationProbability,
         rng,
       );
     }
@@ -368,23 +354,23 @@ export function inoculate(context: BioContext, rng: Rng): void {
 
 /** Background microbes with no population get strains from one day of seeding. */
 function seedMissingMicrobes(context: BioContext, rng: Rng): void {
-  const state = context.state;
-  for (const id of Object.keys(BACKGROUND_SEEDING) as MicrobeId[]) {
+  const { params, state } = context;
+  for (const id of MICROBE_IDS) {
     if (state.populations.some((population) => population.archetypeId === id)) continue;
-    const archetype = getArchetype(id);
+    const archetype = params.archetypes[id];
     const units =
       archetype.zone === 'T' ? context.space.geometry.landAreaM2 : context.space.waterVolumeL;
     if (units <= 0) continue;
     const strains: GenotypeCode[] = [];
-    for (let draw = 0; draw < INITIAL_MICROBE_STRAINS; draw += 1) {
+    for (let draw = 0; draw < params.mechanics.emergence.initialMicrobeStrains; draw += 1) {
       const speciesId = pickSuitableGenotype(context, archetype, rng);
       if (speciesId !== null) strains.push(speciesId);
     }
-    const cod = seedingCod(id, units, 1) / Math.max(1, strains.length);
+    const cod = seedingCod(params, id, units, 1) / Math.max(1, strains.length);
     for (const speciesId of strains) {
       registerSpecies(state, { id: speciesId, origin: 'background', introduced: false });
       foundBiomass(state, speciesId, 'background', cod);
-      creditImport(state, speciesId, cod);
+      creditImport(params, state, speciesId, cod);
     }
   }
 }
@@ -392,19 +378,22 @@ function seedMissingMicrobes(context: BioContext, rng: Rng): void {
 /** docs/04 §7 per-tick arrivals: background, open inflow and from outside the tank. */
 export function arrivals(context: BioContext, rng: Rng): void {
   const state = context.state;
+  const emergence = context.params.mechanics.emergence;
   if (state.tick % TICKS_PER_DAY === 0) seedMissingMicrobes(context, rng);
   const realm = state.config.location.realm;
-  const outsideFactor = state.config.placement === 'outdoor' ? OUTDOOR_OUTSIDE_FACTOR : 1;
+  const outsideFactor = state.config.placement === 'outdoor' ? emergence.outdoorOutsideFactor : 1;
   const open: Vector[] = ['background'];
   if (state.config.openInflow) open.push('open_inflow');
   if (!state.config.lid) open.push('outside');
   for (const vector of open) {
-    const perDay = (ARRIVAL_RATE_PER_DAY[vector] ?? 0) * (vector === 'outside' ? outsideFactor : 1);
+    const rates: Readonly<Partial<Record<Vector, number>>> = emergence.arrivalRatePerDay;
+    const perDay = (rates[vector] ?? 0) * (vector === 'outside' ? outsideFactor : 1);
     for (const id of ARCHETYPE_IDS) {
-      const archetype = getArchetype(id);
+      const archetype = context.params.archetypes[id];
       if (!archetype.vectors.includes(vector)) continue;
       const strains = vector === 'background' && isBackgroundMicrobe(id);
-      const probability = (strains ? MICROBE_STRAIN_ARRIVALS_PER_DAY : perDay) / TICKS_PER_DAY;
+      const probability =
+        (strains ? emergence.microbeStrainArrivalsPerDay : perDay) / TICKS_PER_DAY;
       tryArrival(context, archetype, vector, realm, probability, rng);
     }
   }
@@ -412,18 +401,19 @@ export function arrivals(context: BioContext, rng: Rng): void {
 
 /** docs/05 §3 release draw: environment-weighted, retried until the species can live here. */
 function drawReleasable(context: BioContext, archetype: Archetype, rng: Rng): GenotypeCode | null {
-  const state = context.state;
-  for (let attempt = 0; attempt < SUITABLE_DRAW_ATTEMPTS; attempt += 1) {
+  const { params, state } = context;
+  for (let attempt = 0; attempt < params.mechanics.numerics.suitableDrawAttempts; attempt += 1) {
     const speciesId = sampleGenotype(
+      params,
       archetype,
       rng,
       samplingEnvironment(state, archetype, context),
     );
     if (speciesId === null) continue;
-    const phenotype = phenotypeOf(speciesId);
-    const w = waterFraction(archetype, phenotype, context.media, false);
+    const phenotype = phenotypeOf(params, speciesId);
+    const w = waterFraction(params, archetype, phenotype, context.media, false);
     const temperature = bodyTemperature(state, archetype, w, context.lightsOn);
-    if (environmentFactor(state, phenotype, temperature, w) > 0) return speciesId;
+    if (environmentFactor(params, state, phenotype, temperature, w) > 0) return speciesId;
   }
   return null;
 }
@@ -434,8 +424,8 @@ export function release(
   command: Extract<Command, { type: 'release' }>,
   rng: Rng,
 ): SimEvent | null {
-  const state = context.state;
-  const archetype = getArchetype(command.archetypeId);
+  const { params, state } = context;
+  const archetype = params.archetypes[command.archetypeId];
   const speciesId = command.speciesId ?? drawReleasable(context, archetype, rng);
   const reject = (reason: EnclosureProblem | 'no_capacity' | 'no_species'): SimEvent =>
     makeEvent('release_rejected', state.tick, {
@@ -443,21 +433,29 @@ export function release(
       detail: reason,
     });
   if (speciesId === null) return reject('no_species');
-  const phenotype = phenotypeOf(speciesId);
+  const phenotype = phenotypeOf(params, speciesId);
   const problem = enclosureProblem(archetype, phenotype, state.config, context.space);
   if (problem !== null) return reject(problem);
   registerSpecies(state, { id: speciesId, origin: 'release', introduced: false });
   if (archetype.kind === 'biomass') {
-    const cod = foundingCod(archetype, speciesId, context.space, RELEASE_BIOMASS_SHARE);
+    const emergence = params.mechanics.emergence;
+    const cod = foundingCod(
+      params,
+      archetype,
+      speciesId,
+      context.space,
+      emergence.releaseBiomassShare,
+    );
     if (!(cod > 0)) return reject('no_capacity');
     foundBiomass(state, speciesId, 'player_release', cod);
-    creditImport(state, speciesId, cod);
+    creditImport(params, state, speciesId, cod);
     return null;
   }
-  const capacity = Math.floor(capacityUnits(archetype, context.space));
-  const count = Math.min(command.count ?? RELEASE_COUNT, RELEASE_COUNT, capacity);
+  const capacity = Math.floor(capacityUnits(params, archetype, context.space));
+  const releaseCount = params.mechanics.emergence.releaseCount;
+  const count = Math.min(command.count ?? releaseCount, releaseCount, capacity);
   if (count < 1) return reject('no_capacity');
-  foundCohort(state, speciesId, 'player_release', {
+  foundCohort(params, state, speciesId, 'player_release', {
     birthTick: state.tick - Math.ceil(phenotype.maturityDays * TICKS_PER_DAY),
     count,
     meanMassMg: phenotype.adultMassMg,
@@ -465,6 +463,6 @@ export function release(
     aquatic: false,
     spentTick: null,
   });
-  creditImport(state, speciesId, count * phenotype.adultMassMg * COD_PER_DRY_MASS);
+  creditImport(params, state, speciesId, count * phenotype.adultMassMg * codPerDryMass(params));
   return null;
 }

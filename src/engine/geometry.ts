@@ -1,11 +1,4 @@
-import { MICROBIAL_PROCESSES } from '../content/microbes';
-import {
-  FILTERS,
-  HARDSCAPE_SURFACE,
-  SUBSTRATES,
-  WILD_MATERIALS,
-  WILD_SUBSTRATE_ANOXIC_BONUS,
-} from '../content/tankOptions';
+import type { ParameterSet } from '../content/parameters';
 import type { TankConfig } from './types';
 
 export interface Geometry {
@@ -22,13 +15,12 @@ export interface Geometry {
   readonly totalVolumeL: number;
 }
 
-export const MAX_TOTAL_VOLUME_L = 100_000;
-
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
 /** docs/04 §3.1 */
-export function computeGeometry(config: TankConfig): Geometry {
+export function computeGeometry(params: ParameterSet, config: TankConfig): Geometry {
+  const options = params.tankOptions;
   const floorAreaM2 = (config.lengthCm * config.widthCm) / 1e4;
   const landFraction = clamp(config.landFraction, 0, 1);
   const landAreaM2 = floorAreaM2 * landFraction;
@@ -40,19 +32,19 @@ export function computeGeometry(config: TankConfig): Geometry {
     waterFloorAreaM2 +
     (2 * (config.lengthCm + config.widthCm) * depthCm * (1 - landFraction)) / 1e4;
   const hasWater = nominalWaterVolumeL > 0;
-  const substrate = SUBSTRATES[config.substrate];
+  const substrate = options.substrates[config.substrate];
   const substrateSurfaceM2 = hasWater
     ? waterFloorAreaM2 * substrate.surfacePerFloorPerCm.value * config.substrateDepthCm
     : 0;
   const hardscapeSurfaceM2 = hasWater
-    ? config.hardscape.reduce((sum, item) => sum + HARDSCAPE_SURFACE[item.type].value, 0) *
+    ? config.hardscape.reduce((sum, item) => sum + options.hardscapeSurface[item.type].value, 0) *
       waterFloorAreaM2
     : 0;
   const wildBonus =
     config.substrate !== 'bare' && config.substrateSource.origin === 'wild'
-      ? WILD_SUBSTRATE_ANOXIC_BONUS.value
+      ? options.wildSubstrateAnoxicBonus.value
       : 0;
-  const filterSurfaceM2 = hasWater ? FILTERS[config.filter].mediaSurfaceM2.value : 0;
+  const filterSurfaceM2 = hasWater ? options.filters[config.filter].mediaSurfaceM2.value : 0;
   const anoxicBase =
     config.substrate === 'bare' ? 0 : clamp((config.substrateDepthCm - 3) / 7, 0, 1);
   return {
@@ -73,19 +65,22 @@ export function computeGeometry(config: TankConfig): Geometry {
 
 /** mg COD each habitat can hold; docs/04 §5.2. */
 export function microbialCapacities(
+  params: ParameterSet,
   geometry: Geometry,
   waterVolumeL: number,
   landSubstrateDepthCm: number,
 ) {
+  const processes = params.microbes.processes;
   const soilGrams =
-    geometry.landAreaM2 * 1e4 * landSubstrateDepthCm * WILD_MATERIALS.soilBulkDensity.value;
+    geometry.landAreaM2 *
+    1e4 *
+    landSubstrateDepthCm *
+    params.tankOptions.wildMaterials.soilBulkDensity.value;
   return {
-    attached: MICROBIAL_PROCESSES.biofilmCapacityPerM2.value * geometry.surfaceAreaM2,
+    attached: processes.biofilmCapacityPerM2.value * geometry.surfaceAreaM2,
     substrate:
-      MICROBIAL_PROCESSES.biofilmCapacityPerM2.value *
-      geometry.substrateSurfaceM2 *
-      geometry.anoxicFraction,
-    free: MICROBIAL_PROCESSES.freeBacteriaCapacity.value * waterVolumeL,
-    soil: MICROBIAL_PROCESSES.soilMicrobeCodPerG.value * soilGrams,
+      processes.biofilmCapacityPerM2.value * geometry.substrateSurfaceM2 * geometry.anoxicFraction,
+    free: processes.freeBacteriaCapacity.value * waterVolumeL,
+    soil: processes.soilMicrobeCodPerG.value * soilGrams,
   };
 }

@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { getArchetype } from '../../src/content/archetypes/index';
-import { NATIVE_RANGES } from '../../src/content/realms';
 import {
   cloneState,
   computeGeometry,
@@ -25,6 +23,7 @@ import type {
   TankConfig,
 } from '../../src/engine/types';
 import { CYCLING_TANK } from './fixtures';
+import { params } from '../params';
 
 const WILD = { origin: 'wild', realm: 'IM' } as const;
 const POND_TANK: TankConfig = {
@@ -46,7 +45,7 @@ interface Run {
 }
 
 function run(config: TankConfig, seed: string, days: number): Run {
-  const initial = createInitialState(config, seed);
+  const initial = createInitialState(params, config, seed);
   let state = initial;
   const events: SimEvent[] = [];
   let negatives = 0;
@@ -57,11 +56,11 @@ function run(config: TankConfig, seed: string, days: number): Run {
       for (const archetypeId of ['planktivore_fish', 'shrimp', 'snail'] as const)
         commands.push({ type: 'release', archetypeId });
     }
-    const result = step(state, commands);
+    const result = step(params, state, commands);
     state = result.state;
     events.push(...result.events);
     for (const population of state.populations) {
-      const cod = populationCod(population);
+      const cod = populationCod(params, population);
       if (!(cod >= 0) || !Number.isFinite(cod)) negatives += 1;
       if (population.kind === 'cohort') {
         for (const cohort of population.cohorts) {
@@ -78,10 +77,10 @@ const stocked = run(POND_TANK, 'populations', 35);
 describe('population dynamics (docs/04 §5)', () => {
   it('conserves nitrogen and phosphorus with animals, plants and microbes', () => {
     const { initial, final } = stocked;
-    const nExpected = totalNitrogen(initial) + final.ledger.nIn - final.ledger.nOut;
-    const pExpected = totalPhosphorus(initial) + final.ledger.pIn - final.ledger.pOut;
-    expect(Math.abs(totalNitrogen(final) - nExpected) / nExpected).toBeLessThan(1e-9);
-    expect(Math.abs(totalPhosphorus(final) - pExpected) / pExpected).toBeLessThan(1e-9);
+    const nExpected = totalNitrogen(params, initial) + final.ledger.nIn - final.ledger.nOut;
+    const pExpected = totalPhosphorus(params, initial) + final.ledger.pIn - final.ledger.pOut;
+    expect(Math.abs(totalNitrogen(params, final) - nExpected) / nExpected).toBeLessThan(1e-9);
+    expect(Math.abs(totalPhosphorus(params, final) - pExpected) / pExpected).toBeLessThan(1e-9);
   });
 
   it('keeps biomass, counts and masses non-negative and finite', () => {
@@ -119,11 +118,11 @@ describe('population conservation principle (docs/04 §9.1)', () => {
     expect(victim).toBeDefined();
     if (victim === undefined) return;
     for (const cohort of victim.cohorts) cohort.count *= 0.5 / populationCount(victim);
-    const before = totalNitrogen(state);
+    const before = totalNitrogen(params, state);
     const others = state.populations.length - 1;
-    removeExtinct(state);
+    removeExtinct(params, state);
     expect(state.populations.length).toBe(others);
-    expect(Math.abs(totalNitrogen(state) - before) / before).toBeLessThan(1e-12);
+    expect(Math.abs(totalNitrogen(params, state) - before) / before).toBeLessThan(1e-12);
   });
 
   it('applies carrying capacity through crowding, never by truncating counts', () => {
@@ -136,7 +135,7 @@ describe('population conservation principle (docs/04 §9.1)', () => {
     if (population === undefined) return;
     for (const cohort of population.cohorts) cohort.count *= 1000;
     const crowded = populationCount(population);
-    const next = step(state).state;
+    const next = step(params, state).state;
     const after = next.populations.find((candidate) => candidate.id === population.id);
     expect(after?.kind).toBe('cohort');
     if (after?.kind !== 'cohort') return;
@@ -148,19 +147,19 @@ describe('population conservation principle (docs/04 §9.1)', () => {
     const population = state.populations.find(
       (candidate): candidate is CohortPopulation =>
         candidate.kind === 'cohort' &&
-        getArchetype(candidate.archetypeId).lifeHistory.senescence === 'gompertz',
+        params.archetypes[candidate.archetypeId].lifeHistory.senescence === 'gompertz',
     );
     expect(population).toBeDefined();
     if (population === undefined) return;
-    const maxDays = phenotypeOf(population.speciesId).lifespan.maxDays;
+    const maxDays = phenotypeOf(params, population.speciesId).lifespan.maxDays;
     population.cohorts = population.cohorts.map((cohort) => ({
       ...cohort,
       birthTick: state.tick - Math.ceil(maxDays * 24) - 24,
     }));
-    const next = step(state).state;
+    const next = step(params, state).state;
     const after = next.populations.find((candidate) => candidate.id === population.id);
     const remaining =
-      after?.kind === 'cohort' ? after.cohorts.reduce((s, c) => s + cohortCod(c), 0) : 0;
+      after?.kind === 'cohort' ? after.cohorts.reduce((s, c) => s + cohortCod(params, c), 0) : 0;
     expect(remaining).toBe(0);
   });
 });
@@ -169,6 +168,7 @@ describe('emergence and release (docs/04 §7, docs/06 §2)', () => {
   it('only lets archetypes native to the source realm arrive from wild materials', () => {
     const antarctic = { origin: 'wild', realm: 'AN' } as const;
     const state = createInitialState(
+      params,
       {
         ...POND_TANK,
         waterRealm: 'AN',
@@ -179,13 +179,13 @@ describe('emergence and release (docs/04 §7, docs/06 §2)', () => {
     );
     for (const population of state.populations) {
       if (population.vector === 'background') continue;
-      expect(NATIVE_RANGES[population.archetypeId].realms).toContain('AN');
+      expect(params.nativeRanges[population.archetypeId].realms).toContain('AN');
     }
   });
 
   it('rejects a release that does not fit the minimum enclosure', () => {
-    const state = createInitialState(POND_TANK, 'small-tank');
-    const result = step(state, [{ type: 'release', archetypeId: 'arowana' }]);
+    const state = createInitialState(params, POND_TANK, 'small-tank');
+    const result = step(params, state, [{ type: 'release', archetypeId: 'arowana' }]);
     const rejection = result.events.find((event) => event.type === 'release_rejected');
     expect(rejection?.detail).toBeDefined();
     expect(result.state.populations.some((p) => p.archetypeId === 'arowana')).toBe(false);
@@ -194,10 +194,20 @@ describe('emergence and release (docs/04 §7, docs/06 §2)', () => {
 
 describe('functional response (docs/04 §5.4)', () => {
   it('lets a predator switch fully to the only food kind present', () => {
-    const state = createInitialState(POND_TANK, 'switching');
-    const released = step(state, [{ type: 'release', archetypeId: 'planktivore_fish' }]).state;
-    released.water.food = { cod: 100, n: 5, p: 1 };
-    const context = createBioContext(released, toPools(released), computeGeometry(POND_TANK), 1);
+    const state = createInitialState(params, POND_TANK, 'switching');
+    const released = step(params, state, [
+      { type: 'release', archetypeId: 'planktivore_fish' },
+    ]).state;
+    released.substances.food_cod = 100;
+    released.substances.food_n = 5;
+    released.substances.food_p = 1;
+    const context = createBioContext(
+      params,
+      released,
+      toPools(params, released),
+      computeGeometry(params, POND_TANK),
+      1,
+    );
     const fish = released.populations.find((p) => p.archetypeId === 'planktivore_fish');
     expect(fish).toBeDefined();
     if (fish === undefined) return;

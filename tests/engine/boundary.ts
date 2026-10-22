@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { totalNitrogen, totalPhosphorus } from '../../src/engine/index';
 import type { Placement } from '../../src/engine/types';
+import { params } from '../params';
 import { tank, type LocationSpec } from './fixtures';
 import { runDays } from './simulation';
 
@@ -43,13 +44,13 @@ export function describeBoundaryYear(climate: string, cases: readonly BoundaryCa
             expect(run.minima.pool).toBeGreaterThanOrEqual(0);
             expect(run.minima.volume).toBeGreaterThanOrEqual(0);
             const nExpected =
-              totalNitrogen(run.initial) + run.final.ledger.nIn - run.final.ledger.nOut;
+              totalNitrogen(params, run.initial) + run.final.ledger.nIn - run.final.ledger.nOut;
             const pExpected =
-              totalPhosphorus(run.initial) + run.final.ledger.pIn - run.final.ledger.pOut;
-            expect(Math.abs(totalNitrogen(run.final) - nExpected)).toBeLessThan(
+              totalPhosphorus(params, run.initial) + run.final.ledger.pIn - run.final.ledger.pOut;
+            expect(Math.abs(totalNitrogen(params, run.final) - nExpected)).toBeLessThan(
               1e-6 * Math.max(1, nExpected),
             );
-            expect(Math.abs(totalPhosphorus(run.final) - pExpected)).toBeLessThan(
+            expect(Math.abs(totalPhosphorus(params, run.final) - pExpected)).toBeLessThan(
               1e-6 * Math.max(1, pExpected),
             );
             if (placement === 'outdoor' && climate === 'polar' && testCase.landFraction < 1) {

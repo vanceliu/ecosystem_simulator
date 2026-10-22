@@ -1,6 +1,7 @@
 import type { Vector } from '../content/archetype';
+import type { ParameterSet } from '../content/parameters';
 import { parseGenotypeCode, type GenotypeCode, type SpeciesRecord } from '../generation/index';
-import { bodyRatios, archetypeOf, COD_PER_DRY_MASS, TICKS_PER_DAY } from './biota';
+import { archetypeOf, bodyRatios, codPerDryMass, TICKS_PER_DAY } from './biota';
 import type {
   AgeCohort,
   BiomassPopulation,
@@ -80,6 +81,7 @@ export function addCohort(population: CohortPopulation, cohort: AgeCohort): void
 
 /** Adds individuals of a species, joining its population when one exists. */
 export function foundCohort(
+  params: ParameterSet,
   state: SimulationState,
   speciesId: GenotypeCode,
   vector: Vector,
@@ -90,9 +92,9 @@ export function foundCohort(
     addCohort(existing, cohort);
     return existing;
   }
-  const archetype = archetypeOf(speciesId);
+  const archetype = archetypeOf(params, speciesId);
   const population: CohortPopulation = {
-    ...base(state, speciesId, vector, cohort.count * cohort.meanMassMg * COD_PER_DRY_MASS),
+    ...base(state, speciesId, vector, cohort.count * cohort.meanMassMg * codPerDryMass(params)),
     kind: 'cohort',
     cohorts: [cohort],
     reserveCod: 0,
@@ -105,8 +107,13 @@ export function foundCohort(
 }
 
 /** Records N and P brought in from outside the tank. */
-export function creditImport(state: SimulationState, speciesId: GenotypeCode, cod: number): void {
-  const ratios = bodyRatios(archetypeOf(speciesId));
+export function creditImport(
+  params: ParameterSet,
+  state: SimulationState,
+  speciesId: GenotypeCode,
+  cod: number,
+): void {
+  const ratios = bodyRatios(params, archetypeOf(params, speciesId));
   state.ledger.nIn += cod * ratios.n;
   state.ledger.pIn += cod * ratios.p;
 }

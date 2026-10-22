@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { ARCHETYPE_IDS, type ArchetypeId } from '../src/content/archetypeIds';
-import { getArchetype } from '../src/content/archetypes/index';
 import type { HabitatId } from '../src/content/habitats';
+import type { ParameterSet } from '../src/content/parameters';
 import {
   archetypeOf,
   computeGeometry,
@@ -17,6 +17,7 @@ import {
 import type { Command, SimEvent, SimulationState, TankConfig } from '../src/engine/types';
 import { recommendTankConfig, representativeLocation } from '../src/game/setup';
 import { commonName, rarityScore, rarityTier, scientificName } from '../src/generation/index';
+import { loadParameterSet } from './reference-node';
 
 /** CLI presets: indoor tropical tanks filled and furnished from the wild (docs/00 M3). */
 const PRESETS: Readonly<Record<string, { habitat: HabitatId; overrides: Partial<TankConfig> }>> = {
@@ -44,10 +45,10 @@ function parseRelease(text: string): Release {
   return { archetypeId: id as ArchetypeId, count: Number(match[2] ?? 5), day: Number(match[3]) };
 }
 
-function presetConfig(name: string): TankConfig {
+function presetConfig(params: ParameterSet, name: string): TankConfig {
   const preset = PRESETS[name];
   if (preset === undefined) throw new Error(`Unknown preset ${name}\n${USAGE}`);
-  const location = representativeLocation({
+  const location = representativeLocation(params, {
     hemisphere: 'north',
     latitudeZone: 'tropical',
     altitudeBand: 'lowland',
@@ -57,7 +58,7 @@ function presetConfig(name: string): TankConfig {
     realm: 'IM',
   });
   const wild = { origin: 'wild', realm: 'IM' } as const;
-  const base = recommendTankConfig(location, 'indoor');
+  const base = recommendTankConfig(params, location, 'indoor');
   return {
     ...base,
     waterRealm: 'IM',
@@ -73,56 +74,60 @@ const format = (value: number, digits = 2): string =>
     ? value.toExponential(1)
     : value.toFixed(digits);
 
-function speciesLabel(speciesId: string): string {
-  const archetype = archetypeOf(speciesId);
-  const rarity = rarityTier(rarityScore(archetype, speciesId));
-  return `${commonName(archetype, speciesId)} ${scientificName(archetype, speciesId)} [${rarity}]`;
+function speciesLabel(params: ParameterSet, speciesId: string): string {
+  const archetype = archetypeOf(params, speciesId);
+  const rarity = rarityTier(params, rarityScore(params, archetype, speciesId));
+  return `${commonName(params, archetype, speciesId)} ${scientificName(params, archetype, speciesId)} [${rarity}]`;
 }
 
-function report(state: SimulationState, day: number): string {
+function report(params: ParameterSet, state: SimulationState, day: number): string {
   const water = state.water;
+  const substances = state.substances;
   const volume = water.volumeL;
   const lines: string[] = [];
   const perL = (mg: number): string => format(volume > 0 ? mg / volume : 0);
   lines.push(
-    `── day ${day} ── water ${format(water.temperatureC, 1)} °C pH ${format(waterPh(state))} ` +
-      `O2 ${perL(water.o2)} TAN ${perL(water.tan)} NH3 ${format(freeAmmoniaMgL(state), 3)} ` +
-      `NO2 ${perL(water.no2)} NO3 ${perL(water.no3)} PO4 ${perL(water.po4)} mg/L · ` +
-      `detritus ${perL(water.detritus.cod)} mg COD/L · populations ${state.populations.length} · ` +
-      `cycle ${state.tracking.cycleStatus}`,
+    `── day ${day} ── water ${format(water.temperatureC, 1)} °C ` +
+      `pH ${format(waterPh(params, state))} O2 ${perL(substances.water_o2)} ` +
+      `TAN ${perL(substances.water_tan)} NH3 ${format(freeAmmoniaMgL(params, state), 3)} ` +
+      `NO2 ${perL(substances.water_no2)} NO3 ${perL(substances.water_no3)} ` +
+      `PO4 ${perL(substances.water_po4)} mg/L · ` +
+      `detritus ${perL(substances.detritus_cod)} mg COD/L · ` +
+      `populations ${state.populations.length} · cycle ${state.tracking.cycleStatus}`,
   );
   const levels = state.records.trophicLevels;
   const rows = state.populations
     .map((population) => ({
       population,
       level: levels[population.speciesId] ?? 1,
-      cod: populationCod(population),
+      cod: populationCod(params, population),
     }))
     .sort((a, b) => b.level - a.level || b.cod - a.cod);
   for (const { population, level, cod } of rows) {
-    const archetype = getArchetype(population.archetypeId);
+    const archetype = params.archetypes[population.archetypeId];
     const size =
       population.kind === 'cohort'
-        ? `${format(populationSize(population), 1)} ind`
+        ? `${format(populationSize(params, population), 1)} ind`
         : `${format(cod)} mg COD`;
     const cohorts = population.kind === 'cohort' ? ` cohorts ${population.cohorts.length}` : '';
     const established = population.establishedTick === null ? '' : ' ✓';
     lines.push(
       `  TL ${level.toFixed(1)} ${archetype.layer.padEnd(4)} ${archetype.nameZh} · ` +
-        `${speciesLabel(population.speciesId)} · ${size}${cohorts}${established}`,
+        `${speciesLabel(params, population.speciesId)} · ${size}${cohorts}${established}`,
     );
   }
   return lines.join('\n');
 }
 
-function describeEvent(event: SimEvent): string {
+function describeEvent(params: ParameterSet, event: SimEvent): string {
   const day = Math.floor(event.tick / 24);
-  const subject = event.speciesId === undefined ? '' : ` ${speciesLabel(event.speciesId)}`;
+  const subject = event.speciesId === undefined ? '' : ` ${speciesLabel(params, event.speciesId)}`;
   const detail = event.detail === undefined ? '' : ` (${event.detail})`;
   return `  d${day} [${event.level}] ${event.type}${subject}${detail}`;
 }
 
-function main(): void {
+async function main(): Promise<void> {
+  const params = await loadParameterSet();
   const { values } = parseArgs({
     options: {
       seed: { type: 'string', default: 'cli' },
@@ -138,18 +143,18 @@ function main(): void {
   const every = Math.max(1, Number(values.every));
   const feedMg = Number(values.feed);
   const releases = values.release.map(parseRelease);
-  const preset = presetConfig(values.preset);
+  const preset = presetConfig(params, values.preset);
   const config =
     values.light === undefined ? preset : { ...preset, lightPpfd: Number(values.light) };
-  const geometry = computeGeometry(config);
-  let state = createInitialState(config, values.seed);
-  const initialN = totalNitrogen(state);
-  const initialP = totalPhosphorus(state);
+  const geometry = computeGeometry(params, config);
+  let state = createInitialState(params, config, values.seed);
+  const initialN = totalNitrogen(params, state);
+  const initialP = totalPhosphorus(params, state);
   const out: string[] = [
     `seed ${values.seed} · preset ${values.preset} · ${config.lengthCm}×${config.widthCm}×${config.heightCm} cm · ` +
       `water ${format(geometry.nominalWaterVolumeL, 0)} L · land ${format(geometry.landAreaM2, 3)} m² · ` +
       `source ${config.waterSource} · feed ${feedMg} mg/day`,
-    report(state, 0),
+    report(params, state, 0),
   ];
   const events: SimEvent[] = [];
   const quiet = new Set(['equinox']);
@@ -161,19 +166,19 @@ function main(): void {
         for (const entry of releases)
           if (entry.day === day)
             commands.push({ type: 'release', archetypeId: entry.archetypeId, count: entry.count });
-      const result = step(state, commands);
+      const result = step(params, state, commands);
       state = result.state;
       events.push(...result.events.filter((event) => !quiet.has(event.type)));
     }
     if ((day + 1) % every === 0 || day + 1 === days) {
-      out.push(report(state, day + 1));
-      out.push(...events.map(describeEvent));
+      out.push(report(params, state, day + 1));
+      out.push(...events.map((event) => describeEvent(params, event)));
       events.length = 0;
     }
   }
   const ledger = state.ledger;
-  const nError = totalNitrogen(state) - (initialN + ledger.nIn - ledger.nOut);
-  const pError = totalPhosphorus(state) - (initialP + ledger.pIn - ledger.pOut);
+  const nError = totalNitrogen(params, state) - (initialN + ledger.nIn - ledger.nOut);
+  const pError = totalPhosphorus(params, state) - (initialP + ledger.pIn - ledger.pOut);
   out.push(
     `mass balance: N error ${nError.toExponential(2)} mg, P error ${pError.toExponential(2)} mg · ` +
       `species seen ${Object.keys(state.species).length}`,
@@ -181,4 +186,4 @@ function main(): void {
   process.stdout.write(`${out.join('\n')}\n`);
 }
 
-main();
+await main();

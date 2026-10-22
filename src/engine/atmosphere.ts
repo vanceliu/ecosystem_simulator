@@ -1,14 +1,4 @@
-/** Standard lapse rate, °C per m (ISA). */
-export const LAPSE_RATE_C_PER_M = 0.0065;
-/** pK1 of carbonic acid at 25 °C. */
-export const CARBONIC_PK1 = 6.35;
-/** mmol HCO3⁻ per litre per dKH. */
-export const HCO3_MMOL_PER_DKH = 0.357;
-export const CO2_MG_PER_MMOL = 44.01;
-/** Air-equilibrium dissolved CO2, mg/L. */
-export const CO2_EQUILIBRIUM_MG_L = 0.5;
-export const PH_MIN = 3.5;
-export const PH_MAX = 9.5;
+import type { ParameterSet } from '../content/parameters';
 
 /** ISA troposphere pressure, atm. */
 export function pressureAtm(altitudeM: number): number {
@@ -16,11 +6,12 @@ export function pressureAtm(altitudeM: number): number {
 }
 
 export function lapseAdjustedTemperature(
+  params: ParameterSet,
   temperatureC: number,
   fromAltitudeM: number,
   toAltitudeM: number,
 ): number {
-  return temperatureC - LAPSE_RATE_C_PER_M * (toAltitudeM - fromAltitudeM);
+  return temperatureC - params.physics.lapseRateCPerM.value * (toAltitudeM - fromAltitudeM);
 }
 
 /** Benson & Krause dissolved-oxygen saturation (USGS), mg/L; docs/11 §3.1. */
@@ -50,9 +41,11 @@ export function freeAmmoniaFraction(temperatureC: number, ph: number): number {
 }
 
 /** Carbonate equilibrium pH from carbonate hardness (dKH) and dissolved CO2 (mg/L). */
-export function carbonatePh(khDkh: number, co2MgL: number): number {
-  const bicarbonate = Math.max(khDkh, 0.001) * HCO3_MMOL_PER_DKH;
-  const carbonDioxide = Math.max(co2MgL, 1e-6) / CO2_MG_PER_MMOL;
-  const ph = CARBONIC_PK1 + Math.log10(bicarbonate / carbonDioxide);
-  return Math.min(PH_MAX, Math.max(PH_MIN, ph));
+export function carbonatePh(params: ParameterSet, khDkh: number, co2MgL: number): number {
+  const physics = params.physics;
+  const numerics = params.mechanics.numerics;
+  const bicarbonate = Math.max(khDkh, 0.001) * physics.hco3MmolPerDkh.value;
+  const carbonDioxide = Math.max(co2MgL, 1e-6) / physics.co2MgPerMmol.value;
+  const ph = physics.carbonicPk1.value + Math.log10(bicarbonate / carbonDioxide);
+  return Math.min(numerics.phMax, Math.max(numerics.phMin, ph));
 }

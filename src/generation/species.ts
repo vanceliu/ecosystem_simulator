@@ -1,4 +1,5 @@
 import type { Archetype } from '../content/archetype';
+import type { ParameterSet } from '../content/parameters';
 import type { GenotypeCode } from './genotype';
 import { commonName, scientificName } from './naming';
 import { derivePhenotype, type Phenotype } from './phenotype';
@@ -32,15 +33,19 @@ export interface SpeciesView {
   readonly phenotype: Phenotype;
 }
 
-export function describeSpecies(archetype: Archetype, record: SpeciesRecord): SpeciesView {
-  const score = rarityScore(archetype, record.id);
+export function describeSpecies(
+  params: ParameterSet,
+  archetype: Archetype,
+  record: SpeciesRecord,
+): SpeciesView {
+  const score = rarityScore(params, archetype, record.id);
   return {
     record,
-    scientificName: scientificName(archetype, record.id),
-    commonName: commonName(archetype, record.id),
+    scientificName: scientificName(params, archetype, record.id),
+    commonName: commonName(params, archetype, record.id),
     rarityScore: score,
-    rarity: rarityTier(score),
-    phenotype: derivePhenotype(archetype, record.id),
+    rarity: rarityTier(params, score),
+    phenotype: derivePhenotype(params, archetype, record.id),
   };
 }
 

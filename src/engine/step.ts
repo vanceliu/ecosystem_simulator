@@ -1,6 +1,6 @@
-import { getArchetype } from '../content/archetypes/index';
-import { BACKGROUND_SEEDING, type MicrobeId } from '../content/microbes';
-import { FOOD_COMPOSITION } from '../content/stoichiometry';
+import { MICROBE_IDS } from '../content/microbes';
+import type { ParameterSet } from '../content/parameters';
+import { FOOD, LITTER } from '../content/substances';
 import { createBioContext, type BioContext } from './bioContext';
 import { bodyRatios, populationCod } from './biota';
 import type { Space } from './capacity';
@@ -20,10 +20,10 @@ import {
 } from './consumers';
 import { advanceClonalGenerations, dailyBiology } from './daily';
 import { applyCohortFluxes, removeExtinct, updateCohorts } from './demography';
-import { arrivals, release, SATURATION_LIMIT, SATURATION_RESUME } from './emergence';
+import { arrivals, release } from './emergence';
 import { exchangeGases, lampPpfd, updateWaterTemperature } from './environment';
 import { dayEndEvents, hourlyEvents, makeEvent, seasonEvents } from './events';
-import { applyProcesses, type Process } from './fluxes';
+import { applyProcesses, type PoolKey, type Process } from './fluxes';
 import { computeGeometry, type Geometry } from './geometry';
 import { addRainToLand, updateHydrology } from './hydrology';
 import { applyRunoff, updateLandClimate } from './land';
@@ -43,14 +43,6 @@ import { cloneState, copyPopulations } from './state';
 import { symbiosisProcesses, updateSymbionts } from './symbiosis';
 import type { BiomassPopulation, Command, SimEvent, SimulationState, StepResult } from './types';
 
-/** docs/04 §9: split a tick when any tracked pool changes by more than this fraction. */
-export const MAX_RELATIVE_CHANGE = 0.5;
-export const MAX_SUBSTEPS = 8;
-/** docs/04 §9: pools below this concentration (mg/L) are ignored by the substep check. */
-export const SUBSTEP_CONCENTRATION_FLOOR = 0.1;
-/** docs/11 §7: light through ice; snow-covered ice */
-const ICE_LIGHT_FACTOR = 0.5;
-const SNOW_LIGHT_FACTOR = 0.05;
 /** rng stream for biological draws, distinct from the climate stream */
 const BIOLOGY_STREAM = 0x62696f;
 
@@ -63,11 +55,17 @@ function spaceOf(state: SimulationState, geometry: Geometry): Space {
   };
 }
 
-function tickContext(state: SimulationState, geometry: Geometry, dtDays: number): BioContext {
-  return createBioContext(state, toPools(state), geometry, dtDays);
+function tickContext(
+  params: ParameterSet,
+  state: SimulationState,
+  geometry: Geometry,
+  dtDays: number,
+): BioContext {
+  return createBioContext(params, state, toPools(params, state), geometry, dtDays);
 }
 
 function applyCommands(
+  params: ParameterSet,
   state: SimulationState,
   commands: readonly Command[],
   geometry: Geometry,
@@ -78,18 +76,19 @@ function applyCommands(
     switch (command.type) {
       case 'feed': {
         const dry = Math.max(0, command.dryMassMg);
-        const target = state.water.volumeL > 0 ? state.water.food : state.land.litter;
-        const n = dry * FOOD_COMPOSITION.nPerDryMass.value;
-        const p = dry * FOOD_COMPOSITION.pPerDryMass.value;
-        target.cod += dry * FOOD_COMPOSITION.codPerDryMass.value;
-        target.n += n;
-        target.p += p;
+        const composition = params.stoichiometry.food;
+        const target = state.water.volumeL > 0 ? FOOD : LITTER;
+        const n = dry * composition.nPerDryMass.value;
+        const p = dry * composition.pPerDryMass.value;
+        state.substances[target.cod] += dry * composition.codPerDryMass.value;
+        state.substances[target.n] += n;
+        state.substances[target.p] += p;
         state.ledger.nIn += n;
         state.ledger.pIn += p;
         break;
       }
       case 'release': {
-        const event = release(tickContext(state, geometry, 0), command, rng);
+        const event = release(tickContext(params, state, geometry, 0), command, rng);
         if (event !== null) events.push(event);
         break;
       }
@@ -99,47 +98,55 @@ function applyCommands(
 }
 
 /** Closes the previous game day (from tick 24 on) and opens the next one. */
-function startDay(state: SimulationState, geometry: Geometry, rng: Rng): SimEvent[] {
-  const events = dayEndEvents(state);
+function startDay(
+  params: ParameterSet,
+  state: SimulationState,
+  geometry: Geometry,
+  rng: Rng,
+): SimEvent[] {
+  const events = dayEndEvents(params, state);
   if (state.tick > 0) {
     rollRecords(state);
-    events.push(...dailyBiology(state, spaceOf(state, geometry), rng, state.tracking.saturated));
+    events.push(
+      ...dailyBiology(params, state, spaceOf(state, geometry), rng, state.tracking.saturated),
+    );
   }
   const previousWet = state.climate.wetSeason;
   const dayOfYear = dayOfYearAt(state.config.startDayOfYear, state.tick);
-  const daily = dailyClimate(state.config.location, dayOfYear);
+  const daily = dailyClimate(params, state.config.location, dayOfYear);
   const outdoor = state.config.placement === 'outdoor';
   state.climate.dayOfYear = dayOfYear;
   state.climate.dayLengthH = daily.dayLengthH;
   state.climate.sunshine = daily.sunshine;
   state.climate.wetSeason = daily.wetSeason;
   state.climate.ambientHumidity = daily.humidity;
-  state.climate.ambientDayMeanC = ambientDayMeanOf(state, dayOfYear);
+  state.climate.ambientDayMeanC = ambientDayMeanOf(params, state, dayOfYear);
   state.climate.rainTodayMm = outdoor
-    ? drawRainfall(daily, rngForTick(state.seedHash, state.tick))
+    ? drawRainfall(params, daily, rngForTick(state.seedHash, state.tick))
     : 0;
   state.climate.evaporationTodayMm = outdoor ? daily.evaporationMmPerDay : 0;
   return [...events, ...seasonEvents(state, previousWet)];
 }
 
-function ambientDayMeanOf(state: SimulationState, dayOfYear: number): number {
+function ambientDayMeanOf(params: ParameterSet, state: SimulationState, dayOfYear: number): number {
   return state.config.placement === 'outdoor'
-    ? dailyClimate(state.config.location, dayOfYear).meanTemperatureC
+    ? dailyClimate(params, state.config.location, dayOfYear).meanTemperatureC
     : state.config.roomTemperatureC;
 }
 
-function updateHourlyClimate(state: SimulationState, hour: number): void {
+function updateHourlyClimate(params: ParameterSet, state: SimulationState, hour: number): void {
   const config = state.config;
   if (config.placement === 'outdoor') {
-    const daily = dailyClimate(config.location, state.climate.dayOfYear);
-    state.climate.ambientTemperatureC = hourlyAmbientTemperature(daily, hour);
+    const daily = dailyClimate(params, config.location, state.climate.dayOfYear);
+    state.climate.ambientTemperatureC = hourlyAmbientTemperature(params, daily, hour);
+    const water = params.mechanics.water;
     const iceFactor = state.water.iceCover
       ? state.water.snowOnIce
-        ? SNOW_LIGHT_FACTOR
-        : ICE_LIGHT_FACTOR
+        ? water.snowLightFactor
+        : water.iceLightFactor
       : 1;
     state.climate.ppfd =
-      naturalPpfd(config.location, daily, hour) * (1 - config.shading) * iceFactor;
+      naturalPpfd(params, config.location, daily, hour) * (1 - config.shading) * iceFactor;
   } else {
     state.climate.ambientTemperatureC = config.roomTemperatureC;
     state.climate.ppfd = lampPpfd(state, hour);
@@ -147,9 +154,14 @@ function updateHourlyClimate(state: SimulationState, hour: number): void {
 }
 
 /** docs/04 §5.2 background seeding into the dominant strain of each seeded microbe. */
-function seedMicrobes(state: SimulationState, dtDays: number, landAreaM2: number): void {
-  for (const id of Object.keys(BACKGROUND_SEEDING) as MicrobeId[]) {
-    const archetype = getArchetype(id);
+function seedMicrobes(
+  params: ParameterSet,
+  state: SimulationState,
+  dtDays: number,
+  landAreaM2: number,
+): void {
+  for (const id of MICROBE_IDS) {
+    const archetype = params.archetypes[id];
     const units = archetype.zone === 'T' ? landAreaM2 : state.water.volumeL;
     if (units <= 0) continue;
     let dominant: BiomassPopulation | null = null;
@@ -158,9 +170,9 @@ function seedMicrobes(state: SimulationState, dtDays: number, landAreaM2: number
       if (dominant === null || population.cod > dominant.cod) dominant = population;
     }
     if (dominant === null) continue;
-    const added = seedingCod(id, units, dtDays);
+    const added = seedingCod(params, id, units, dtDays);
     dominant.cod += added;
-    const ratios = bodyRatios(archetype);
+    const ratios = bodyRatios(params, archetype);
     state.ledger.nIn += added * ratios.n;
     state.ledger.pIn += added * ratios.p;
   }
@@ -168,30 +180,31 @@ function seedMicrobes(state: SimulationState, dtDays: number, landAreaM2: number
 
 /** Advances one fraction of a tick; docs/04 §2 steps 2–9. */
 function integrate(
+  params: ParameterSet,
   state: SimulationState,
   hour: number,
   dtTicks: number,
   firstSubstep: boolean,
 ): SubstepFluxes {
   const dtDays = dtTicks / 24;
-  const geometry = computeGeometry(state.config);
-  updateWaterTemperature(state, dtTicks);
-  updateHydrology(state, dtTicks);
-  addRainToLand(state, dtDays);
-  exchangeGases(state, dtTicks);
-  updateLandClimate(state, hour, dtTicks, firstSubstep);
-  seedMicrobes(state, dtDays, geometry.landAreaM2);
+  const geometry = computeGeometry(params, state.config);
+  updateWaterTemperature(params, state, dtTicks);
+  updateHydrology(params, state, dtTicks);
+  addRainToLand(params, state, dtDays);
+  exchangeGases(params, state, dtTicks);
+  updateLandClimate(params, state, hour, dtTicks, firstSubstep);
+  seedMicrobes(params, state, dtDays, geometry.landAreaM2);
 
-  const pools = toPools(state);
-  const context = createBioContext(state, pools, geometry, dtDays);
+  const pools = toPools(params, state);
+  const context = createBioContext(params, state, pools, geometry, dtDays);
   const biomass = state.populations.filter(
     (population): population is BiomassPopulation => population.kind === 'biomass',
   );
-  const before = new Map(
+  const before = new Map<PoolKey, number>(
     biomass.map((population) => [populationKey(population.id), population.cod]),
   );
   const processes = [
-    ...leachingProcesses(pools, state.water.volumeL, dtDays),
+    ...leachingProcesses(params, pools, state.water.volumeL, dtDays),
     ...sedimentExchange(context),
     ...waterMicrobeProcesses(context, biomass),
     ...landMicrobeProcesses(context, biomass),
@@ -204,12 +217,12 @@ function integrate(
     ),
     ...respirationProcesses(context, state.populations),
     ...mortalityProcesses(context, state.populations),
-  ].map(withAlkalinity);
+  ].map((process) => withAlkalinity(params, process));
   const effective = applyProcesses(pools, processes);
   fromPools(state, pools);
-  applyCohortFluxes(state, pools, processes, effective);
-  advanceClonalGenerations(state, processes, effective, before);
-  if (geometry.landAreaM2 > 0 && geometry.waterFloorAreaM2 > 0) applyRunoff(state, dtDays);
+  applyCohortFluxes(params, state, pools, processes, effective);
+  advanceClonalGenerations(params, state, processes, effective, before);
+  if (geometry.landAreaM2 > 0 && geometry.waterFloorAreaM2 > 0) applyRunoff(params, state, dtDays);
   return { processes, effective };
 }
 
@@ -222,13 +235,9 @@ interface SubstepFluxes {
 function cloneForIntegration(state: SimulationState): SimulationState {
   return {
     ...state,
-    water: {
-      ...state.water,
-      food: { ...state.water.food },
-      detritus: { ...state.water.detritus },
-      inert: { ...state.water.inert },
-    },
-    land: { ...state.land, litter: { ...state.land.litter } },
+    water: { ...state.water },
+    land: { ...state.land },
+    substances: { ...state.substances },
     populations: copyPopulations(state.populations),
     ledger: { ...state.ledger },
     tracking: { ...state.tracking },
@@ -236,44 +245,70 @@ function cloneForIntegration(state: SimulationState): SimulationState {
 }
 
 /** Tracked water pools as concentrations (mg/L), plus the volume itself. */
+const TRACKED_SUBSTANCES = [
+  'water_o2',
+  'water_tan',
+  'water_no2',
+  'water_no3',
+  'water_po4',
+  'water_substrate',
+  'food_cod',
+  'detritus_cod',
+] as const;
+
 function trackedValues(state: SimulationState): number[] {
-  const w = state.water;
-  const volume = Math.max(w.volumeL, 1e-9);
-  const pools = [w.o2, w.tan, w.no2, w.no3, w.po4, w.substrateCod, w.food.cod, w.detritus.cod];
-  return [...pools.map((mass) => mass / volume), w.volumeL];
+  const volume = Math.max(state.water.volumeL, 1e-9);
+  const masses = TRACKED_SUBSTANCES.map((id) => state.substances[id]);
+  return [...masses.map((mass) => mass / volume), state.water.volumeL];
 }
 
-function exceedsChange(before: readonly number[], after: readonly number[]): boolean {
+function exceedsChange(
+  params: ParameterSet,
+  before: readonly number[],
+  after: readonly number[],
+): boolean {
+  const numerics = params.mechanics.numerics;
   return before.some((value, index) => {
     const next = after[index] ?? 0;
-    if (value < SUBSTEP_CONCENTRATION_FLOOR) return false;
-    return Math.abs(next - value) / value > MAX_RELATIVE_CHANGE;
+    if (value < numerics.substepConcentrationFloor) return false;
+    return Math.abs(next - value) / value > numerics.maxRelativeChange;
   });
 }
 
-function integrateTick(state: SimulationState, hour: number): SimulationState {
+function integrateTick(
+  params: ParameterSet,
+  state: SimulationState,
+  hour: number,
+): SimulationState {
   const before = trackedValues(state);
+  const maxSubsteps = params.mechanics.numerics.maxSubsteps;
   let substeps = Math.max(1, Math.floor(state.tracking.substeps / 2));
   for (;;) {
     const candidate = cloneForIntegration(state);
     const fluxes: SubstepFluxes[] = [];
     for (let index = 0; index < substeps; index += 1) {
-      fluxes.push(integrate(candidate, hour, 1 / substeps, index === 0));
+      fluxes.push(integrate(params, candidate, hour, 1 / substeps, index === 0));
     }
-    if (substeps >= MAX_SUBSTEPS || !exceedsChange(before, trackedValues(candidate))) {
+    if (substeps >= maxSubsteps || !exceedsChange(params, before, trackedValues(candidate))) {
       for (const { processes, effective } of fluxes)
         recordFluxes(candidate.records, processes, effective);
       candidate.tracking.substeps = substeps;
       return candidate;
     }
-    substeps = Math.min(MAX_SUBSTEPS, substeps * 2);
+    substeps = Math.min(maxSubsteps, substeps * 2);
   }
 }
 
 /** docs/04 §2 step 10 and §9.2: demography, arrivals, extinction, saturation. */
-function populationStep(state: SimulationState, geometry: Geometry, rng: Rng): SimEvent[] {
+function populationStep(
+  params: ParameterSet,
+  state: SimulationState,
+  geometry: Geometry,
+  rng: Rng,
+): SimEvent[] {
   const events: SimEvent[] = [];
   for (const population of updateSymbionts(
+    params,
     state.populations,
     state.climate.ppfd,
     state.water.temperatureC,
@@ -281,36 +316,42 @@ function populationStep(state: SimulationState, geometry: Geometry, rng: Rng): S
     events.push(makeEvent('coral_bleaching', state.tick, { speciesId: population.speciesId }));
   }
   const space = spaceOf(state, geometry);
-  events.push(...updateCohorts(state, space, rng, state.tracking.saturated));
-  if (!state.tracking.saturated) arrivals(tickContext(state, geometry, 1 / 24), rng);
-  events.push(...removeExtinct(state));
+  events.push(...updateCohorts(params, state, space, rng, state.tracking.saturated));
+  if (!state.tracking.saturated) arrivals(tickContext(params, state, geometry, 1 / 24), rng);
+  events.push(...removeExtinct(params, state));
   const count = state.populations.length;
-  if (!state.tracking.saturated && count >= SATURATION_LIMIT) {
+  const limits = params.mechanics.limits;
+  if (!state.tracking.saturated && count >= limits.saturationLimit) {
     state.tracking.saturated = true;
     events.push(makeEvent('ecosystem_saturated', state.tick));
-  } else if (state.tracking.saturated && count < SATURATION_RESUME) {
+  } else if (state.tracking.saturated && count < limits.saturationResume) {
     state.tracking.saturated = false;
   }
   for (const population of state.populations) {
-    if (!Number.isFinite(populationCod(population))) throw new Error(`Non-finite ${population.id}`);
+    if (!Number.isFinite(populationCod(params, population)))
+      throw new Error(`Non-finite ${population.id}`);
   }
   return events;
 }
 
 /** Advances the simulation by one tick (1 game hour). */
-export function step(state: SimulationState, commands: readonly Command[] = []): StepResult {
+export function step(
+  params: ParameterSet,
+  state: SimulationState,
+  commands: readonly Command[] = [],
+): StepResult {
   let next = cloneState(state);
-  const geometry = computeGeometry(next.config);
+  const geometry = computeGeometry(params, next.config);
   const rng = rngForTick(mix32(next.seedHash, BIOLOGY_STREAM), next.tick);
-  const events: SimEvent[] = applyCommands(next, commands, geometry, rng);
+  const events: SimEvent[] = applyCommands(params, next, commands, geometry, rng);
   const hour = next.tick % 24;
-  if (hour === 0) events.push(...startDay(next, geometry, rng));
-  updateHourlyClimate(next, hour);
+  if (hour === 0) events.push(...startDay(params, next, geometry, rng));
+  updateHourlyClimate(params, next, hour);
   const wasIceCovered = next.water.iceCover;
-  next = integrateTick(next, hour);
-  events.push(...populationStep(next, geometry, rng));
-  sampleHistory(next);
-  events.push(...hourlyEvents(next, wasIceCovered));
+  next = integrateTick(params, next, hour);
+  events.push(...populationStep(params, next, geometry, rng));
+  sampleHistory(params, next);
+  events.push(...hourlyEvents(params, next, wasIceCovered));
   next.tick += 1;
   return { state: next, events };
 }

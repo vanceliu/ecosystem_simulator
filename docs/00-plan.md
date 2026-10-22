@@ -13,25 +13,16 @@
 
 ## 待決事項
 
-- ⬜ 持續補齊 [09](09-life-history.md) 與 `src/content` 中 estimated 數值的來源，改為實測或（推）；不阻擋實作
+- ⬜ 持續補齊 [09](09-life-history.md) 與參考資料（`db/reference`）中 estimated 數值的來源，改為實測或（推）；不阻擋實作
 - ⬜ 背景硝化菌接種量（1 × 10⁵ cells/L/日）為估計值，依 Hovanec 專利實測時程校準；有實測資料時更新
 - ⬜ 預設遊戲速度與離線追算上限的最終數值（M6 決定）
 - ⬜ 授權條款（License）
 
 ---
 
-## M3b 參數與物質資料化
-
-- ⬜ 物質表 `ref_substance`（id、單位、元素組成、介質）：水域、陸域、有機池全部以物質 id 識別；`SimulationState` 的池改為「物質 id → 質量」，移除 `saltMg`、`o2`、`co2` 等固定欄位
-- ⬜ 參數表：生物參數、物理與化學常數、遊戲機制常數全部以 id 存放，每列含 `basis`、`source`、`derivation`
-- ⬜ 數值改以 SQL／CSV 種子檔撰寫，移除 `src/content` 內的 TS 常數物件；來源規則測試改為驗證種子檔
-- ⬜ worker 啟動時載入參考表，組成以 id 為鍵的唯讀參數集傳入引擎；引擎維持純函式，不存取資料庫
-- ⬜ 測試以種子檔建立記憶體參數集
-- ⬜ 同步更新 03、04、10、CLAUDE.md
-
 ## M4 文字 UI
 
-- ⬜ Web Worker 承載模擬迴圈、指令佇列、快照推送（[08](08-ui-design.md) §9）
+- ⬜ Web Worker 承載模擬迴圈、指令佇列、快照推送（[08](08-ui-design.md) §9）；啟動時以 `openDatabase()`（`src/worker/database.ts`）取得參數集與 `dbStatus`
 - ⬜ 響應式版面、淺色／深色主題（[08](08-ui-design.md) §1–2）
 - ⬜ 頂欄與缸況面板（水域、陸域分組）
 - ⬜ 物種列表：分組切換（營養層、類別、區域、棲位）、數量、走勢、趨勢、標記、搜尋、排序、關係標示
@@ -45,9 +36,7 @@
 ## M5 遊戲系統
 
 - ⬜ 玩家干預指令：餵食、投放活餌、換水、調光、調溫、曝氣、噴霧、陸域設備、投放、撈除、用藥、加入水草／活石／落葉
-- ⬜ 資料庫連線：OPFS `opfs-sahpool`、記憶體降級、多分頁鎖定偵測（[10](10-database.md) §1）
-- ⬜ 遷移機制與初始結構 `0001_init.sql`（[10](10-database.md) §2、§5）
-- ⬜ 參考資料：`tools/build-reference-sql.ts`、版本比對與匯入
+- ⬜ 多分頁鎖定偵測（[10](10-database.md) §1）：`opfs-sahpool` 因其他分頁占用而失敗時回報 `locked`，與 OPFS 不可用（`memory`）區分
 - ⬜ 寫入器：每日彙總、事件、圖鑑、狀態（[10](10-database.md) §3）
 - ⬜ 具名查詢與 worker `query` 協定（[10](10-database.md) §4）
 - ⬜ 匯出／匯入、保留政策設定

@@ -1,5 +1,6 @@
 import type { Archetype } from '../content/archetype';
 import type { ArchetypeId } from '../content/archetypeIds';
+import type { ParameterSet } from '../content/parameters';
 import { lociFor, type LocusDef, type LocusId } from './loci';
 
 /** `${archetypeId}:${base36 mixed-radix index}` — species ID, signature and codex key. */
@@ -13,8 +14,8 @@ export interface Genotype {
 const RADIX = 36;
 
 /** Number of distinct genotypes for an archetype (docs/05 §2.4). */
-export function speciesSpaceSize(archetype: Archetype): number {
-  return lociFor(archetype).reduce((product, locus) => product * locus.labelsZh.length, 1);
+export function speciesSpaceSize(params: ParameterSet, archetype: Archetype): number {
+  return lociFor(params, archetype).reduce((product, locus) => product * locus.labelsZh.length, 1);
 }
 
 /** Mixed-radix index with the first locus as the least significant digit. */
@@ -43,8 +44,12 @@ export function allelesFromIndex(loci: readonly LocusDef[], index: number): numb
   });
 }
 
-export function encodeGenotype(archetype: Archetype, alleles: readonly number[]): GenotypeCode {
-  return `${archetype.id}:${genotypeIndex(lociFor(archetype), alleles).toString(RADIX)}`;
+export function encodeGenotype(
+  params: ParameterSet,
+  archetype: Archetype,
+  alleles: readonly number[],
+): GenotypeCode {
+  return `${archetype.id}:${genotypeIndex(lociFor(params, archetype), alleles).toString(RADIX)}`;
 }
 
 export function parseGenotypeCode(code: GenotypeCode): {
@@ -58,16 +63,26 @@ export function parseGenotypeCode(code: GenotypeCode): {
   return { archetypeId: code.slice(0, separator) as ArchetypeId, index };
 }
 
-export function decodeGenotype(archetype: Archetype, code: GenotypeCode): Genotype {
+export function decodeGenotype(
+  params: ParameterSet,
+  archetype: Archetype,
+  code: GenotypeCode,
+): Genotype {
   const parsed = parseGenotypeCode(code);
   if (parsed.archetypeId !== archetype.id) throw new Error(`${code} is not a ${archetype.id}`);
-  const loci = lociFor(archetype);
-  if (parsed.index >= speciesSpaceSize(archetype)) throw new Error(`Index out of range: ${code}`);
+  const loci = lociFor(params, archetype);
+  if (parsed.index >= speciesSpaceSize(params, archetype))
+    throw new Error(`Index out of range: ${code}`);
   return { archetypeId: archetype.id, alleles: allelesFromIndex(loci, parsed.index) };
 }
 
-export function alleleOf(archetype: Archetype, alleles: readonly number[], id: LocusId): number {
-  const position = lociFor(archetype).findIndex((locus) => locus.id === id);
+export function alleleOf(
+  params: ParameterSet,
+  archetype: Archetype,
+  alleles: readonly number[],
+  id: LocusId,
+): number {
+  const position = lociFor(params, archetype).findIndex((locus) => locus.id === id);
   if (position < 0) throw new Error(`${archetype.id} has no locus ${id}`);
   return alleles[position] ?? 0;
 }

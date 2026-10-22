@@ -1,4 +1,12 @@
-export type Pools = Map<string, number>;
+import type { SubstanceId } from '../content/substances';
+
+/** A substance pool or a population pool of the current substep. */
+export type PoolKey = SubstanceId | `pop:${string}` | `coh:${string}` | `gain:${string}`;
+
+export type Pools = Map<PoolKey, number>;
+
+/** Coefficients per unit rate, by pool. */
+export type Stoichiometry = Partial<Record<PoolKey, number>>;
 
 /** What a process does to a cohort pool: eaten or killed individuals vs. lost body mass. */
 export type CohortEffect = 'remove' | 'shrink';
@@ -12,7 +20,7 @@ export interface FeedingEdge {
 
 /** A cohort pool the process draws from and how that changes the cohort. */
 export interface CohortTouch {
-  readonly key: string;
+  readonly key: PoolKey;
   readonly effect: CohortEffect;
 }
 
@@ -20,7 +28,7 @@ export interface CohortTouch {
 export interface Process {
   readonly name: string;
   readonly rate: number;
-  readonly stoichiometry: Record<string, number>;
+  readonly stoichiometry: Stoichiometry;
   /** species whose chemical exchange this process records (docs/04 §10) */
   readonly speciesId?: string;
   readonly feeding?: readonly FeedingEdge[];
@@ -28,7 +36,7 @@ export interface Process {
 }
 
 /** Adds a coefficient to a stoichiometry, summing terms that share a key. */
-export function addTerm(terms: Record<string, number>, key: string, coefficient: number): void {
+export function addTerm(terms: Stoichiometry, key: PoolKey, coefficient: number): void {
   if (coefficient !== 0) terms[key] = (terms[key] ?? 0) + coefficient;
 }
 
@@ -38,15 +46,17 @@ export function addTerm(terms: Record<string, number>, key: string, coefficient:
  * Returns the effective rate of each process, in input order.
  */
 export function applyProcesses(pools: Pools, processes: readonly Process[]): number[] {
-  const entries = processes.map((process) => Object.entries(process.stoichiometry));
-  const demand = new Map<string, number>();
+  const entries = processes.map(
+    (process) => Object.entries(process.stoichiometry) as [PoolKey, number][],
+  );
+  const demand = new Map<PoolKey, number>();
   processes.forEach((process, index) => {
     if (!(process.rate > 0)) return;
     for (const [key, coefficient] of entries[index] ?? []) {
       if (coefficient < 0) demand.set(key, (demand.get(key) ?? 0) - coefficient * process.rate);
     }
   });
-  const poolScale = new Map<string, number>();
+  const poolScale = new Map<PoolKey, number>();
   for (const [key, total] of demand) {
     const available = Math.max(0, pools.get(key) ?? 0);
     if (total > available) poolScale.set(key, available / total);

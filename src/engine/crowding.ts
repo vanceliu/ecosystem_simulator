@@ -1,6 +1,6 @@
 import type { ArchetypeId } from '../content/archetypeIds';
-import { getArchetype } from '../content/archetypes/index';
-import { COD_PER_DRY_MASS, phenotypeOf, populationCod } from './biota';
+import type { ParameterSet } from '../content/parameters';
+import { codPerDryMass, phenotypeOf, populationCod } from './biota';
 import {
   capacityCod,
   capacityUnits,
@@ -21,33 +21,37 @@ export function capacityGroup(id: ArchetypeId): string {
 }
 
 /** Biomass or individuals a population occupies, in its group's capacity units. */
-function occupiedUnits(population: Population): number {
-  const archetype = getArchetype(population.archetypeId);
-  const cod = populationCod(population);
+function occupiedUnits(params: ParameterSet, population: Population): number {
+  const archetype = params.archetypes[population.archetypeId];
+  const cod = populationCod(params, population);
   if (
     MICROBIAL_CAPACITY_GROUP[archetype.id] !== undefined ||
     MASS_UNITS.has(archetype.density.unit)
   )
     return cod;
-  return cod / (phenotypeOf(population.speciesId).adultMassMg * COD_PER_DRY_MASS);
+  return cod / (phenotypeOf(params, population.speciesId).adultMassMg * codPerDryMass(params));
 }
 
-function groupCapacity(population: Population, space: Space): number {
-  const archetype = getArchetype(population.archetypeId);
+function groupCapacity(params: ParameterSet, population: Population, space: Space): number {
+  const archetype = params.archetypes[population.archetypeId];
   const microbial = MICROBIAL_CAPACITY_GROUP[archetype.id];
-  if (microbial !== undefined) return microbialCapacity(microbial, space);
+  if (microbial !== undefined) return microbialCapacity(params, microbial, space);
   if (MASS_UNITS.has(archetype.density.unit))
-    return capacityCod(archetype, phenotypeOf(population.speciesId), space);
-  return capacityUnits(archetype, space);
+    return capacityCod(params, archetype, phenotypeOf(params, population.speciesId), space);
+  return capacityUnits(params, archetype, space);
 }
 
-export function computeOccupancy(populations: readonly Population[], space: Space): Occupancy {
+export function computeOccupancy(
+  params: ParameterSet,
+  populations: readonly Population[],
+  space: Space,
+): Occupancy {
   const used = new Map<string, number>();
   const capacity = new Map<string, number>();
   for (const population of populations) {
     const group = capacityGroup(population.archetypeId);
-    used.set(group, (used.get(group) ?? 0) + occupiedUnits(population));
-    if (!capacity.has(group)) capacity.set(group, groupCapacity(population, space));
+    used.set(group, (used.get(group) ?? 0) + occupiedUnits(params, population));
+    if (!capacity.has(group)) capacity.set(group, groupCapacity(params, population, space));
   }
   const occupancy = new Map<string, number>();
   for (const [group, units] of used) {

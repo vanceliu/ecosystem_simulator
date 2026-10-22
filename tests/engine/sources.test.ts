@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { WILD_LITTER_STOCK } from '../../src/content/tankOptions';
 import {
   computeGeometry,
   createInitialState,
@@ -11,6 +10,7 @@ import { waterComposition } from '../../src/engine/sourceWater';
 import type { TankConfig } from '../../src/engine/types';
 import { CYCLING_TANK, tank } from './fixtures';
 import { runDays } from './simulation';
+import { params } from '../params';
 
 const WILD = { origin: 'wild', realm: 'IM' } as const;
 const CLEAN = { origin: 'clean', realm: 'IM' } as const;
@@ -31,26 +31,32 @@ const wild: TankConfig = {
 
 describe('fill water composition (docs/04 §3)', () => {
   it('makes synthetic seawater from RO water and sea salt', () => {
-    const fill = waterComposition({ ...CYCLING_TANK, waterSource: 'ro', salinityPpt: 35 });
+    const fill = waterComposition(params, { ...CYCLING_TANK, waterSource: 'ro', salinityPpt: 35 });
     expect(fill.salinityPpt).toBe(35);
-    expect(fill.kh).toBeCloseTo(8, 6);
-    expect(fill.ca).toBeCloseTo(420, 6);
+    const caco3PerDkh = params.stoichiometry.base.caco3PerDkh.value;
+    expect((fill.perLitre.water_alkalinity ?? 0) / caco3PerDkh).toBeCloseTo(8, 6);
+    expect(fill.perLitre.water_ca).toBeCloseTo(420, 6);
     expect(fill.inoculum).toEqual({});
   });
 
   it('dilutes natural seawater with RO water to the target salinity', () => {
-    const fill = waterComposition({ ...CYCLING_TANK, waterSource: 'seawater', salinityPpt: 14 });
+    const fill = waterComposition(params, {
+      ...CYCLING_TANK,
+      waterSource: 'seawater',
+      salinityPpt: 14,
+    });
     expect(fill.sourceFraction).toBeCloseTo(0.4, 6);
     expect(fill.inoculum.heterotroph).toBeCloseTo(4e5, 0);
   });
 
   it('carries salinity and hardness into the tank', () => {
     const state = createInitialState(
+      params,
       { ...CYCLING_TANK, waterSource: 'ro', salinityPpt: 35 },
       'salt',
     );
     expect(salinityPpt(state)).toBeCloseTo(35, 6);
-    expect(khDkh(state)).toBeCloseTo(8, 6);
+    expect(khDkh(params, state)).toBeCloseTo(8, 6);
   });
 });
 
@@ -62,8 +68,8 @@ describe('self-sustaining tanks without feeding (docs/06 §4)', () => {
   });
 
   it('cycles on the organic load carried by wild water, rock and sand', () => {
-    const initial = createInitialState(wild, 'wild');
-    expect(initial.water.detritus.n).toBeGreaterThan(0);
+    const initial = createInitialState(params, wild, 'wild');
+    expect(initial.substances.detritus_n).toBeGreaterThan(0);
     const run = runDays(wild, 'wild', 120, NO_FEED, 9);
     const types = run.events.map((event) => event.type);
     expect(types).toContain('cycle_started');
@@ -90,11 +96,11 @@ describe('wild land materials (docs/11 §6)', () => {
       landSubstrateDepthCm: 8,
       landSubstrateSource: { origin: 'wild', realm: 'IM' },
     };
-    const state = createInitialState(config, 'litter');
-    const landAreaM2 = computeGeometry(config).landAreaM2;
-    const expectedDryMg = WILD_LITTER_STOCK.tropical.value * landAreaM2 * 1000;
-    expect(state.land.litter.cod).toBeCloseTo(expectedDryMg * 1.2, 3);
+    const state = createInitialState(params, config, 'litter');
+    const landAreaM2 = computeGeometry(params, config).landAreaM2;
+    const expectedDryMg = params.tankOptions.wildLitterStock.tropical.value * landAreaM2 * 1000;
+    expect(state.substances.litter_cod).toBeCloseTo(expectedDryMg * 1.2, 3);
     const soil = state.populations.find((population) => population.archetypeId === 'soil_bacteria');
-    expect(soil === undefined ? 0 : populationCod(soil)).toBeGreaterThan(0);
+    expect(soil === undefined ? 0 : populationCod(params, soil)).toBeGreaterThan(0);
   });
 });

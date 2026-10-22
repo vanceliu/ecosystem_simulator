@@ -1,9 +1,8 @@
 import type { Archetype } from '../content/archetype';
 import type { ArchetypeId } from '../content/archetypeIds';
-import { CAPACITY_CONVERSION } from '../content/stoichiometry';
-import { WILD_MATERIALS } from '../content/tankOptions';
+import type { ParameterSet } from '../content/parameters';
 import type { Phenotype } from '../generation/index';
-import { COD_PER_DRY_MASS } from './biota';
+import { codPerDryMass } from './biota';
 import type { Geometry } from './geometry';
 import { microbialCapacities } from './geometry';
 import type { TankConfig } from './types';
@@ -36,10 +35,16 @@ export interface Space {
 
 /** Shared capacity of a docs/04 §5.2 microbial habitat, mg COD. */
 export function microbialCapacity(
+  params: ParameterSet,
   group: 'free' | 'attached' | 'substrate' | 'soil',
   space: Space,
 ): number {
-  return microbialCapacities(space.geometry, space.waterVolumeL, space.landSubstrateDepthCm)[group];
+  return microbialCapacities(
+    params,
+    space.geometry,
+    space.waterVolumeL,
+    space.landSubstrateDepthCm,
+  )[group];
 }
 
 /** Area an archetype's per-m² density applies to (docs/09 §7). */
@@ -67,7 +72,7 @@ export function enclosureMultiple(archetype: Archetype, space: Space): number {
 }
 
 /** docs/09 §7 carrying capacity in individuals (cohort) or modules/cells (biomass). */
-export function capacityUnits(archetype: Archetype, space: Space): number {
+export function capacityUnits(params: ParameterSet, archetype: Archetype, space: Space): number {
   const max = archetype.density.max.value;
   const geometry = space.geometry;
   switch (archetype.density.unit) {
@@ -80,7 +85,7 @@ export function capacityUnits(archetype: Archetype, space: Space): number {
         geometry.landAreaM2 *
         CM2_PER_M2 *
         space.landSubstrateDepthCm *
-        WILD_MATERIALS.soilBulkDensity.value;
+        params.tankOptions.wildMaterials.soilBulkDensity.value;
       return max * soilG;
     }
     case 'individuals_per_L':
@@ -99,24 +104,25 @@ export function capacityUnits(archetype: Archetype, space: Space): number {
 }
 
 /** docs/09 §7 carrying capacity as biomass, mg COD. */
-export function capacityCod(archetype: Archetype, phenotype: Phenotype, space: Space): number {
+export function capacityCod(
+  params: ParameterSet,
+  archetype: Archetype,
+  phenotype: Phenotype,
+  space: Space,
+): number {
   const max = archetype.density.max.value;
   const area = areaFor(archetype, space);
+  const conversion = params.stoichiometry.capacity;
+  const cod = codPerDryMass(params);
   switch (archetype.density.unit) {
     case 'mg_chl_a_per_m2':
-      return max * CAPACITY_CONVERSION.dryMassPerChlorophyll.value * area * COD_PER_DRY_MASS;
+      return max * conversion.dryMassPerChlorophyll.value * area * cod;
     case 'g_dry_per_m2':
-      return max * MG_PER_G * area * COD_PER_DRY_MASS;
+      return max * MG_PER_G * area * cod;
     case 'cover_percent':
-      return (
-        (max / PERCENT) *
-        CAPACITY_CONVERSION.fullCoverDryGPerM2.value *
-        MG_PER_G *
-        area *
-        COD_PER_DRY_MASS
-      );
+      return (max / PERCENT) * conversion.fullCoverDryGPerM2.value * MG_PER_G * area * cod;
     default:
-      return capacityUnits(archetype, space) * phenotype.adultMassMg * COD_PER_DRY_MASS;
+      return capacityUnits(params, archetype, space) * phenotype.adultMassMg * cod;
   }
 }
 

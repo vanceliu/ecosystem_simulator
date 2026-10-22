@@ -1,5 +1,7 @@
+import { STATE_SUBSTANCE_IDS } from '../../src/content/substances';
 import { createInitialState, populationCod, step } from '../../src/engine/index';
 import type { SimEvent, SimulationState, TankConfig } from '../../src/engine/types';
+import { params } from '../params';
 
 export interface DailySample {
   readonly day: number;
@@ -17,17 +19,6 @@ export interface RunResult {
   readonly finite: boolean;
 }
 
-const POOL_KEYS = [
-  'o2',
-  'co2',
-  'tan',
-  'no2',
-  'no3',
-  'po4',
-  'alkalinityMg',
-  'substrateCod',
-] as const;
-
 /** Runs whole days, feeding once a day at `feedHour` when `feedMg` > 0. */
 export function runDays(
   config: TankConfig,
@@ -36,7 +27,7 @@ export function runDays(
   feedMg: number,
   feedHour: number,
 ): RunResult {
-  const initial = createInitialState(config, seed);
+  const initial = createInitialState(params, config, seed);
   let state = initial;
   const events: SimEvent[] = [];
   const daily: DailySample[] = [];
@@ -47,17 +38,17 @@ export function runDays(
     for (let hour = 0; hour < 24; hour += 1) {
       const commands =
         feedMg > 0 && hour === feedHour ? [{ type: 'feed' as const, dryMassMg: feedMg }] : [];
-      const result = step(state, commands);
+      const result = step(params, state, commands);
       state = result.state;
       events.push(...result.events);
-      for (const key of POOL_KEYS) {
-        const value = state.water[key];
+      for (const id of STATE_SUBSTANCE_IDS) {
+        const value = state.substances[id];
         poolMinimum = Math.min(poolMinimum, value);
         if (!Number.isFinite(value)) finite = false;
       }
       volumeMinimum = Math.min(volumeMinimum, state.water.volumeL);
       for (const population of state.populations) {
-        const cod = populationCod(population);
+        const cod = populationCod(params, population);
         poolMinimum = Math.min(poolMinimum, cod);
         if (!Number.isFinite(cod)) finite = false;
       }
@@ -72,9 +63,9 @@ export function runDays(
     const volume = state.water.volumeL;
     daily.push({
       day: day + 1,
-      tanMgL: volume > 0 ? state.water.tan / volume : 0,
-      no2MgL: volume > 0 ? state.water.no2 / volume : 0,
-      no3MgL: volume > 0 ? state.water.no3 / volume : 0,
+      tanMgL: volume > 0 ? state.substances.water_tan / volume : 0,
+      no2MgL: volume > 0 ? state.substances.water_no2 / volume : 0,
+      no3MgL: volume > 0 ? state.substances.water_no3 / volume : 0,
     });
   }
   return {
